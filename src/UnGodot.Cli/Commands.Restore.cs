@@ -120,8 +120,10 @@ internal static partial class Commands
         if (!options.NoResources)
         {
             stages.Add(new ResourceStage());
-            stages.Add(new RelinkStage());
         }
+
+        // Textures also contribute remaps, so relinking is not tied to resource conversion.
+        stages.Add(new RelinkStage());
 
         RecoveryReport result = RecoveryPipeline
             .RunAsync(context, stages, cancellationToken)

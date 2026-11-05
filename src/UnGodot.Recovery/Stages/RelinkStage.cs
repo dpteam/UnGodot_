@@ -18,7 +18,7 @@ public sealed partial class RelinkStage : IRecoveryStage
 
     public Task RunAsync(RecoveryContext context, RecoveryStageResult result, CancellationToken cancellationToken)
     {
-        if (context.ConvertedResources.Count == 0)
+        if (context.RemappedPaths.Count == 0)
         {
             result.Notes.Add("no converted resources to relink");
             return Task.CompletedTask;
@@ -57,7 +57,7 @@ public sealed partial class RelinkStage : IRecoveryStage
                 string basePath = subResource >= 0 ? value[..subResource] : value;
                 string suffix = subResource >= 0 ? value[subResource..] : string.Empty;
 
-                if (!context.ConvertedResources.TryGetValue(basePath, out string? target))
+                if (!context.RemappedPaths.TryGetValue(basePath, out string? target))
                 {
                     return match.Value;
                 }
@@ -94,8 +94,69 @@ public sealed partial class RelinkStage : IRecoveryStage
             result.Count("references updated", references);
         }
 
+        int archived = ArchiveStaleRemaps(context);
+        if (archived > 0)
+        {
+            result.Count("remaps archived", archived);
+        }
+
         result.Notes.AddRange(notes);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A <c>foo.tres.remap</c> that redirects <c>res://foo.tres</c> to the shipped
+    /// <c>foo.tres.converted.res</c> would shadow the text file we just produced for it.
+    /// Remaps whose target we converted *to* the remap's own base path are moved aside.
+    /// </summary>
+    private static int ArchiveStaleRemaps(RecoveryContext context)
+    {
+        int archived = 0;
+        foreach (string remap in Directory.EnumerateFiles(context.Root, "*.remap", SearchOption.AllDirectories))
+        {
+            string relative = Path.GetRelativePath(context.Root, remap);
+            if (relative.StartsWith(".autoconverted", StringComparison.OrdinalIgnoreCase) ||
+                relative.StartsWith(".godot", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string basePath = "res://" + relative[..^".remap".Length].Replace('\\', '/');
+            string? target = ReadRemapTarget(remap);
+            if (target is null ||
+                !context.RemappedPaths.TryGetValue(target, out string? produced) ||
+                !string.Equals(produced, basePath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                string archivedPath = Path.Combine(context.Root, ".autoconverted", relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(archivedPath)!);
+                File.Move(remap, archivedPath, overwrite: true);
+                archived++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn($"{relative}: {ex.Message}");
+            }
+        }
+
+        return archived;
+    }
+
+    private static string? ReadRemapTarget(string path)
+    {
+        try
+        {
+            Match match = RemapPathPattern().Match(File.ReadAllText(path));
+            return match.Success ? match.Groups["path"].Value : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static List<string> EnumerateTextFiles(string root)
@@ -124,4 +185,8 @@ public sealed partial class RelinkStage : IRecoveryStage
     /// <summary>A complete quoted <c>res://</c> string, optionally with a <c>::sub</c> suffix.</summary>
     [GeneratedRegex("\"(?<path>res://[^\"\r\n]*)\"", RegexOptions.CultureInvariant)]
     private static partial Regex ResourcePathPattern();
+
+    /// <summary>The <c>path=</c> entry of a <c>*.remap</c> file.</summary>
+    [GeneratedRegex("^\\s*path\\s*=\\s*\"(?<path>res://[^\"]+)\"", RegexOptions.Multiline)]
+    private static partial Regex RemapPathPattern();
 }

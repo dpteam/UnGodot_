@@ -3,6 +3,7 @@ using System.Text;
 using UnGodot.Recovery;
 using UnGodot.Recovery.Stages;
 using UnGodot.Resources;
+using UnGodot.Textures;
 using UnGodot.Variants;
 using Xunit;
 using ZstdSharp;
@@ -394,8 +395,8 @@ public class ResourceTests
                 Report = new RecoveryReport { Root = root },
                 EngineMajor = 3,
             };
-            context.ConvertedResources["res://a/thing.material"] = "res://a/thing.tres";
-            context.ConvertedResources["res://level.scn"] = "res://level.tscn";
+            context.RemappedPaths["res://a/thing.material"] = "res://a/thing.tres";
+            context.RemappedPaths["res://level.scn"] = "res://level.tscn";
 
             var result = new RecoveryStageResult { Stage = "references" };
             await new RelinkStage().RunAsync(context, result, CancellationToken.None);
@@ -464,7 +465,7 @@ public class ResourceTests
             var converted = new RecoveryStageResult { Stage = "resources" };
             await new ResourceStage().RunAsync(context, converted, CancellationToken.None);
             Assert.Equal(1, converted.Counters["scenes"]);
-            Assert.Equal(2, context.ConvertedResources.Count);
+            Assert.Equal(2, context.RemappedPaths.Count);
 
             var relinked = new RecoveryStageResult { Stage = "references" };
             await new RelinkStage().RunAsync(context, relinked, CancellationToken.None);
@@ -473,6 +474,123 @@ public class ResourceTests
             Assert.Contains("[ext_resource path=\"res://thing.tres\" type=\"Material\" id=1]", scene);
             Assert.Contains("material_override = ExtResource( 1 )", scene);
             Assert.Equal(1, relinked.Counters["files updated"]);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch
+            {
+                // best effort
+            }
+        }
+    }
+
+    [Fact]
+    public void ImportMetadataMapsImportedFilesToTheirSource()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ungodot-import", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "art"));
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(root, "art", "hero.tga.import"),
+                "[remap]\n\nimporter=\"texture\"\ntype=\"StreamTexture\"\n" +
+                "path.astc=\"res://.import/hero.tga-abc.astc.stex\"\n" +
+                "path.s3tc=\"res://.import/hero.tga-abc.s3tc.stex\"\n\n[deps]\n\nsource_file=\"res://art/hero.tga\"\n");
+
+            Dictionary<string, string> map = ImportMetadata.ReadSourceMap(root);
+
+            Assert.Equal(2, map.Count);
+            Assert.Equal("res://art/hero.tga", map["res://.import/hero.tga-abc.s3tc.stex"]);
+            Assert.Equal("res://art/hero.tga", map["res://.import/hero.tga-abc.astc.stex"]);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch
+            {
+                // best effort
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TextureStageWritesThePngAtTheImportedSourcePath()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ungodot-texplace", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, ".import"));
+        Directory.CreateDirectory(Path.Combine(root, "art"));
+        try
+        {
+            const string hash = "0123456789abcdef0123456789abcdef";
+            File.WriteAllBytes(
+                Path.Combine(root, ".import", $"hero.tga-{hash}.s3tc.stex"),
+                TextureTests.BuildStreamTexture(1, 1, Godot3ImageFormat.RGBA8, [255, 0, 0, 255]));
+            File.WriteAllText(
+                Path.Combine(root, "art", "hero.tga.import"),
+                $"[remap]\n\nimporter=\"texture\"\npath.s3tc=\"res://.import/hero.tga-{hash}.s3tc.stex\"\n");
+
+            var context = new RecoveryContext
+            {
+                Root = root,
+                Options = new RecoveryOptions(),
+                Report = new RecoveryReport { Root = root },
+                EngineMajor = 3,
+            };
+            var result = new RecoveryStageResult { Stage = "textures" };
+
+            await new TextureStage().RunAsync(context, result, CancellationToken.None);
+
+            Assert.True(File.Exists(Path.Combine(root, "art", "hero.png")));
+            Assert.Equal(
+                "res://art/hero.png",
+                context.RemappedPaths["res://art/hero.tga"]);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch
+            {
+                // best effort
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RelinkArchivesRemapsThatWouldShadowTheTextFile()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ungodot-remap", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "All.tres"), "[gd_resource type=\"Resource\" format=2]\n");
+            File.WriteAllText(
+                Path.Combine(root, "All.tres.remap"), "[remap]\n\npath=\"res://All.tres.converted.res\"\n");
+
+            var context = new RecoveryContext
+            {
+                Root = root,
+                Options = new RecoveryOptions(),
+                Report = new RecoveryReport { Root = root },
+                EngineMajor = 3,
+            };
+            context.RemappedPaths["res://All.tres.converted.res"] = "res://All.tres";
+
+            var result = new RecoveryStageResult { Stage = "references" };
+            await new RelinkStage().RunAsync(context, result, CancellationToken.None);
+
+            Assert.False(File.Exists(Path.Combine(root, "All.tres.remap")));
+            Assert.True(File.Exists(Path.Combine(root, ".autoconverted", "All.tres.remap")));
+            Assert.Equal(1, result.Counters["remaps archived"]);
         }
         finally
         {

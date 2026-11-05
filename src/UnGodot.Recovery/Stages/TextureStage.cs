@@ -36,11 +36,55 @@ public sealed partial class TextureStage : IRecoveryStage
             return Task.CompletedTask;
         }
 
-        // Group platform variants by their source name and pick the best one per group.
+        // Prefer the original source path from the .import metadata: a pack ships only the
+        // imported .stex under .import/, while scenes reference res://dir/name.tga. Writing
+        // dir/name.png (and relinking the reference) keeps the project's folder structure and
+        // avoids the flat-name collisions of the import folder.
+        Dictionary<string, string> sourceMap = ImportMetadata.ReadSourceMap(context.Root);
+
+        // Platform variants the .import file does not list (nx, etc.) share the import name
+        // with one that it does, so remember the source per import name too.
+        var sourceByName = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (KeyValuePair<string, string> entry in sourceMap)
+        {
+            string? name = SourceKey(Path.GetFileNameWithoutExtension(entry.Key));
+            if (name is null)
+            {
+                continue;
+            }
+
+            if (sourceByName.TryGetValue(name, out string? existing))
+            {
+                if (!string.Equals(existing, entry.Value, StringComparison.OrdinalIgnoreCase))
+                {
+                    sourceByName[name] = null; // two folders ship the same file name
+                }
+            }
+            else
+            {
+                sourceByName[name] = entry.Value;
+            }
+        }
+
         var groups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (string file in files)
         {
-            string key = SourceKey(Path.GetFileNameWithoutExtension(file)) ?? Path.GetFileNameWithoutExtension(file);
+            string resPath = "res://" + Path.GetRelativePath(context.Root, file).Replace('\\', '/');
+            string? nameKey = SourceKey(Path.GetFileNameWithoutExtension(file));
+            string key;
+            if (sourceMap.TryGetValue(resPath, out string? source))
+            {
+                key = source;
+            }
+            else if (nameKey is not null && sourceByName.TryGetValue(nameKey, out string? byName) && byName is not null)
+            {
+                key = byName;
+            }
+            else
+            {
+                key = "~" + (nameKey ?? Path.GetFileNameWithoutExtension(file));
+            }
+
             if (!groups.TryGetValue(key, out List<string>? variants))
             {
                 variants = [];
@@ -56,6 +100,7 @@ public sealed partial class TextureStage : IRecoveryStage
         int collisions = 0;
         var usedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         object targetGate = new();
+        object remapGate = new();
         var notes = new List<string>();
         object notesGate = new();
 
@@ -67,7 +112,7 @@ public sealed partial class TextureStage : IRecoveryStage
 
         Parallel.ForEach(groups, options, group =>
         {
-            (string sourceName, List<string> variants) = group;
+            (string key, List<string> variants) = group;
 
             string? chosen = variants
                 .OrderByDescending(VariantScore)
@@ -87,7 +132,10 @@ public sealed partial class TextureStage : IRecoveryStage
                 }
 
                 byte[] png = StreamTexture.ToPng(data);
-                string target = Path.Combine(context.Root, Path.ChangeExtension(sourceName, ".png"));
+                string relative = key.StartsWith("res://", StringComparison.Ordinal)
+                    ? key["res://".Length..]
+                    : key[1..];
+                string target = Path.Combine(context.Root, Path.ChangeExtension(relative, ".png"));
 
                 // Two source paths can flatten to the same file name once the original
                 // folders are gone; keep both files instead of overwriting one.
@@ -97,7 +145,7 @@ public sealed partial class TextureStage : IRecoveryStage
                     {
                         string hash = SourceHash(Path.GetFileNameWithoutExtension(chosen)) ?? "duplicate";
                         target = Path.Combine(
-                            context.Root,
+                            Path.GetDirectoryName(target)!,
                             $"{Path.GetFileNameWithoutExtension(target)}-{hash[..Math.Min(8, hash.Length)]}.png");
                         usedTargets.Add(target);
                         Interlocked.Increment(ref collisions);
@@ -106,6 +154,18 @@ public sealed partial class TextureStage : IRecoveryStage
 
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 File.WriteAllBytes(PathUtil.FullPath(target), png);
+
+                if (key.StartsWith("res://", StringComparison.Ordinal))
+                {
+                    string targetPath = "res://" + Path.GetRelativePath(context.Root, target).Replace('\\', '/');
+                    if (!string.Equals(key, targetPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        lock (remapGate)
+                        {
+                            context.RemappedPaths[key] = targetPath;
+                        }
+                    }
+                }
 
                 Interlocked.Increment(ref converted);
                 if (variants.Count > 1)

@@ -104,7 +104,7 @@ public sealed class RecoveryContext
     /// resource stage wrote for it. Filled by the resource stage and consumed by the relink
     /// stage so the recovered project references the text copies.
     /// </summary>
-    public Dictionary<string, string> ConvertedResources { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> RemappedPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public interface IRecoveryStage

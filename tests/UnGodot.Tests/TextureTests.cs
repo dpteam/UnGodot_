@@ -8,7 +8,7 @@ namespace UnGodot.Tests;
 
 public class TextureTests
 {
-    private static byte[] BuildStreamTexture(int width, int height, Godot3ImageFormat format, byte[] data, bool png = false, bool mipmaps = false)
+    internal static byte[] BuildStreamTexture(int width, int height, Godot3ImageFormat format, byte[] data, bool png = false, bool mipmaps = false)
     {
         var bytes = new List<byte>();
         bytes.AddRange("GDST"u8.ToArray());

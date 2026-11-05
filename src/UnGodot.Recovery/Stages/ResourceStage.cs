@@ -99,7 +99,7 @@ public sealed class ResourceStage : IRecoveryStage
                 string targetPath = ToResPath(context.Root, target);
                 if (!string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase))
                 {
-                    context.ConvertedResources[sourcePath] = targetPath;
+                    context.RemappedPaths[sourcePath] = targetPath;
                 }
 
                 if (text.Notes.Count > 0)

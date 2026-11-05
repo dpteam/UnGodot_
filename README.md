@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 85 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
+dotnet test                       # 88 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -183,7 +183,7 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.Recovery` | recovery pipeline, project.binary > project.godot, stages and report |
 | `src/UnGodot.Textures` | Godot 3 stream textures, BC1/BC2/BC3/BC4/BC5 + raw formats, PNG writer |
 | `src/UnGodot.Resources` | binary resources (RSRC/RSCC), legacy variants, `.tres`/`.tscn` writer |
-| `tests/UnGodot.Tests` | 85 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
+| `tests/UnGodot.Tests` | 88 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
 
 `refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
 C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
@@ -250,6 +250,13 @@ becomes `hero.png`), the best decodable platform variant wins (desktop S3TC over
 `-low` variant), and same-named sources keep both files by suffixing the import hash. Mobile
 formats that need a full ASTC/ETC/PVRTC/BPTC decoder are reported instead of guessed.
 
+The `*.import` sidecars are read first: a pack ships only the imported `.stex` (in `.import/`)
+while scenes reference the original `res://dir/hero.tga`, so the PNG is written at
+`dir/hero.png` and the reference is relinked. Platform variants that the sidecar does not list
+(`nx`, …) are matched by their import name, and sources without metadata still fall back to the
+flat name. This keeps the project's folder structure and stops same-named textures from
+different folders from colliding.
+
 Resources are decoded from the real binary format: `RSRC` files and the `RSCC` container
 (`FileAccessCompressed`: mode, block size, total size, a block-size table, then Zstandard or
 Deflate blocks), the legacy variant ids used inside resources, inline and table string
@@ -260,10 +267,14 @@ text copy, because game resources still reference `res://thing.material`.
 
 A final stage then rewrites those references: every complete quoted `res://…` value that
 points at a converted resource — in `.tscn` `[ext_resource]` headers, in `.tres` values, in
-decompiled `.gd` (`preload`/`load`) and in `project.godot` — is pointed at the text file.
-References to anything that was not converted (textures, shaders, scripts, `.import` sources)
-are left untouched, and only paths present in the conversion map are rewritten, so an
-unrelated `res://` string never changes by accident.
+decompiled `.gd` (`preload`/`load`) and in `project.godot` — is pointed at the text or PNG file.
+References to anything that was not converted (shaders, scripts, genuinely missing files) are
+left untouched, and only paths present in the conversion map are rewritten, so an unrelated
+`res://` string never changes by accident.
+
+Exported games also ship `x.tres.remap` files that redirect `res://x.tres` to the binary
+`x.tres.converted.res`; those would shadow the text file we just wrote, so a remap whose target
+we converted into its own base path is moved to `.autoconverted/`.
 
 Validated on Sonic Colors Ultimate: the 35 project settings are written, GDRE Tools parses the
 resulting `project.godot` (and re-saves it line-for-line identical), all 72 scripts of a
