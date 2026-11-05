@@ -18,6 +18,12 @@ public sealed class RecoveryOptions
     /// <summary>Convert binary resources and scenes to <c>.tres</c>/<c>.tscn</c> text.</summary>
     public bool ConvertResources { get; init; } = true;
 
+    /// <summary>
+    /// Move the converted binary originals to <c>.autoconverted/</c>, leaving a text-only
+    /// project. Off by default: the binaries still load, and keeping them is non-destructive.
+    /// </summary>
+    public bool ArchiveBinaryOriginals { get; init; }
+
     /// <summary>Engine version hint for the bytecode revision detection (e.g. <c>3.1</c>).</summary>
     public string? EngineVersionHint { get; init; }
 

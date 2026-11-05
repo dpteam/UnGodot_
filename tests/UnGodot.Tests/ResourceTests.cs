@@ -646,6 +646,46 @@ public class ResourceTests
         }
     }
 
+    [Fact]
+    public async Task StageCanArchiveTheBinaryOriginals()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ungodot-archive", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllBytes(
+                Path.Combine(root, "thing.material"),
+                BuildResource("", [], [new TestObject("ShaderMaterial", "res://thing.material", [])]));
+
+            var context = new RecoveryContext
+            {
+                Root = root,
+                Options = new RecoveryOptions { ArchiveBinaryOriginals = true },
+                Report = new RecoveryReport { Root = root },
+                EngineMajor = 3,
+            };
+            var result = new RecoveryStageResult { Stage = "resources" };
+
+            await new ResourceStage().RunAsync(context, result, CancellationToken.None);
+
+            Assert.True(File.Exists(Path.Combine(root, "thing.tres")));
+            Assert.False(File.Exists(Path.Combine(root, "thing.material")), "the binary original is archived");
+            Assert.True(File.Exists(Path.Combine(root, ".autoconverted", "thing.material")));
+            Assert.Equal(1, result.Counters["binary originals archived"]);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch
+            {
+                // best effort
+            }
+        }
+    }
+
     private static byte[] MinimalScene()
     {
         byte[] bundled = VDictionary(

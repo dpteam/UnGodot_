@@ -98,6 +98,7 @@ internal static partial class Commands
                 MoveCompiledScripts = !options.KeepGdc,
                 ConvertTextures = !options.NoTextures,
                 ConvertResources = !options.NoResources,
+                ArchiveBinaryOriginals = options.ArchiveBinary,
                 EngineVersionHint = options.EngineVersion,
                 EngineMajor = engineMajor,
             },

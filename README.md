@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 96 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
+dotnet test                       # 97 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -183,7 +183,7 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.Recovery` | recovery pipeline, project.binary > project.godot, stages and report |
 | `src/UnGodot.Textures` | Godot 3 stream textures, BC1/BC2/BC3/BC4/BC5 + raw formats, PNG writer |
 | `src/UnGodot.Resources` | binary resources (RSRC/RSCC, Godot 3 and 4), variant decoding, `.tres`/`.tscn` writer |
-| `tests/UnGodot.Tests` | 96 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
+| `tests/UnGodot.Tests` | 97 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
 
 `refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
 C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
@@ -242,8 +242,8 @@ ungodot restore game.pck --filter "*.gdc;project.binary" -o ./project   # quick 
 ```
 
 Stages fail independently: a broken stage is recorded in the report and the remaining ones
-still run. `--no-scripts`, `--no-textures`, `--no-resources`, `--keep-gdc` and
-`--engine 3.1.2` are available.
+still run. `--no-scripts`, `--no-textures`, `--no-resources`, `--keep-gdc`,
+`--archive-binary` and `--engine 3.1.2` are available.
 
 Textures are exported with their original base name (`res://.import/hero.png-<md5>.s3tc.stex`
 becomes `hero.png`), the best decodable platform variant wins (desktop S3TC over ASTC or a
@@ -317,8 +317,7 @@ stream that has not been ported yet.
 
 Still to come, in this order:
 
-* GDScript 2.0 bytecode (`GDSC` v100+) for Godot 4 scripts;
-* an option to archive the binary originals once the project is fully text-based.
+* GDScript 2.0 bytecode (`GDSC` v100+) for Godot 4 scripts.
 
 ## Verified on real data
 

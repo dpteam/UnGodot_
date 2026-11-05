@@ -39,6 +39,9 @@ internal sealed class CliOptions
 
     /// <summary>Skip binary resource/scene conversion on <c>restore</c>.</summary>
     public bool NoResources { get; set; }
+
+    /// <summary>Move converted binary originals to <c>.autoconverted/</c> on <c>restore</c>.</summary>
+    public bool ArchiveBinary { get; set; }
     public bool? Mono { get; set; }
     public bool Templates { get; set; }
     public bool NoLaunch { get; set; }
@@ -98,6 +101,7 @@ internal static class CommandLine
               --keep-gdc        restore: keep compiled scripts next to the .gd
               --no-textures     restore: skip .stex -> PNG conversion
               --no-resources    restore: skip binary resource/scene -> text conversion
+              --archive-binary  restore: move converted binaries to .autoconverted/
               --spaces          decompile with spaces instead of tabs
               --tab-size <N>    decompile indentation width (default 4)
               --godot <VERSION> editor: version to use instead of the detected one
@@ -274,6 +278,9 @@ internal static class CommandLine
                         break;
                     case "--no-resources":
                         options.NoResources = true;
+                        break;
+                    case "--archive-binary":
+                        options.ArchiveBinary = true;
                         break;
                     case "--keep-gdc":
                         options.KeepGdc = true;

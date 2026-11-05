@@ -48,6 +48,7 @@ public sealed class ResourceStage : IRecoveryStage
         int notBinary = 0;
         int failed = 0;
         int collisions = 0;
+        int archived = 0;
         var notes = new List<string>();
 
         // Files are sorted and processed in order so that when two sources flatten to the
@@ -117,6 +118,24 @@ public sealed class ResourceStage : IRecoveryStage
                     context.RemappedPaths[importedSource] = targetPath;
                 }
 
+                if (context.Options.ArchiveBinaryOriginals)
+                {
+                    string archive = Path.Combine(context.Root, ".autoconverted", relative);
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(archive)!);
+                        File.Move(file, archive, overwrite: true);
+                        archived++;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        if (notes.Count < MaxNotes)
+                        {
+                            notes.Add($"{relative}: cannot archive the binary original: {ex.Message}");
+                        }
+                    }
+                }
+
                 if (text.Notes.Count > 0)
                 {
                     foreach (string note in text.Notes.Take(Math.Max(0, MaxNotes - notes.Count)))
@@ -160,6 +179,11 @@ public sealed class ResourceStage : IRecoveryStage
         if (failed > 0)
         {
             result.Count("failed", failed);
+        }
+
+        if (archived > 0)
+        {
+            result.Count("binary originals archived", archived);
         }
 
         result.Notes.AddRange(notes);
