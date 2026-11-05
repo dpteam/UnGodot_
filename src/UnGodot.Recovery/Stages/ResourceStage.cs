@@ -95,6 +95,13 @@ public sealed class ResourceStage : IRecoveryStage
                     scenes++;
                 }
 
+                string sourcePath = ToResPath(context.Root, file);
+                string targetPath = ToResPath(context.Root, target);
+                if (!string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    context.ConvertedResources[sourcePath] = targetPath;
+                }
+
                 if (text.Notes.Count > 0)
                 {
                     foreach (string note in text.Notes.Take(Math.Max(0, MaxNotes - notes.Count)))
@@ -173,6 +180,10 @@ public sealed class ResourceStage : IRecoveryStage
 
         return Path.Combine(directory, stem);
     }
+
+    /// <summary>Builds the <c>res://</c> path of a file inside the recovered project.</summary>
+    internal static string ToResPath(string root, string path) =>
+        "res://" + Path.GetRelativePath(root, path).Replace('\\', '/');
 
     /// <summary>
     /// Keeps both files when two sources would write the same text path, e.g.

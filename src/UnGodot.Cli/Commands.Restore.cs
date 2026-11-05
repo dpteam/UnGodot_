@@ -120,6 +120,7 @@ internal static partial class Commands
         if (!options.NoResources)
         {
             stages.Add(new ResourceStage());
+            stages.Add(new RelinkStage());
         }
 
         RecoveryReport result = RecoveryPipeline

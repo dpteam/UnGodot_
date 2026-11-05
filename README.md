@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 81 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
+dotnet test                       # 83 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -183,7 +183,7 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.Recovery` | recovery pipeline, project.binary > project.godot, stages and report |
 | `src/UnGodot.Textures` | Godot 3 stream textures, BC1/BC2/BC3/BC4/BC5 + raw formats, PNG writer |
 | `src/UnGodot.Resources` | binary resources (RSRC/RSCC), legacy variants, `.tres`/`.tscn` writer |
-| `tests/UnGodot.Tests` | 81 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
+| `tests/UnGodot.Tests` | 83 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
 
 `refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
 C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
@@ -232,7 +232,9 @@ files decompile to files **byte-identical** to GDRE Tools 2.7.4, with no engine 
    RGBE9995, float/half formats);
 5. binary resources → text: `.material`/`.mesh`/`.anim`/`.res` to `.tres`, `.scn` and packed
    scenes to `.tscn`;
-6. a machine readable `ungodot_recovery.json` report.
+6. every `res://…` reference to a converted resource rewritten to its text file (`x.material` →
+   `x.tres`) in scenes, resources, scripts and `project.godot`;
+7. a machine readable `ungodot_recovery.json` report.
 
 ```bash
 ungodot restore "D:\Games\MyGame" -o ./project
@@ -256,6 +258,13 @@ references, and the `_bundled` dictionary of a `PackedScene`, which is rebuilt i
 placeholders, groups and connections are handled. The binary original is kept next to the
 text copy, because game resources still reference `res://thing.material`.
 
+A final stage then rewrites those references: every complete quoted `res://…` value that
+points at a converted resource — in `.tscn` `[ext_resource]` headers, in `.tres` values, in
+decompiled `.gd` (`preload`/`load`) and in `project.godot` — is pointed at the text file.
+References to anything that was not converted (textures, shaders, scripts, `.import` sources)
+are left untouched, and only paths present in the conversion map are rewritten, so an
+unrelated `res://` string never changes by accident.
+
 Validated on Sonic Colors Ultimate: the 35 project settings are written, GDRE Tools parses the
 resulting `project.godot` (and re-saves it line-for-line identical), all 72 scripts of a
 multi-pack extraction decompile with revision 3.1.1, and 2 603 of the 2 605 stream textures of
@@ -264,14 +273,12 @@ kept as separate files. Decoded pages were checked visually against the game's U
 textures. Of the 3 773 binary resources of `sonic3.pck` (718 materials, 1 288 animations,
 45 meshes, 70 scenes and 1 652 `.converted.res` files), all convert in ~14 s with zero failures
 (1 179 of them are packed scenes); a random sample of the text output re-saves through the
-engine's own text loader.
+engine's own text loader. Relinking then rewrites 2 300 `res://` references across 548 files.
 
 Still to come, in this order:
 
-* resource *references between files*: after conversion, `res://thing.material` paths inside
-  scenes still point at the binary originals, which Godot 3 loads fine but a text-only project
-  would want rewritten;
-* the Godot 4 variant decoder, so `project.binary`, scripts and resources of 4.x projects work.
+* the Godot 4 variant decoder, so `project.binary`, scripts and resources of 4.x projects work;
+* an option to archive the binary originals once the project is fully text-based.
 
 ## Verified on real data
 

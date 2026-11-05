@@ -98,6 +98,13 @@ public sealed class RecoveryContext
 
     public string? EngineHint => Options.EngineVersionHint
         ?? (EngineMinor > 0 ? $"{EngineMajor}.{EngineMinor}" : null);
+
+    /// <summary>
+    /// <c>res://</c> path of a binary resource → <c>res://</c> path of the text file the
+    /// resource stage wrote for it. Filled by the resource stage and consumed by the relink
+    /// stage so the recovered project references the text copies.
+    /// </summary>
+    public Dictionary<string, string> ConvertedResources { get; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public interface IRecoveryStage

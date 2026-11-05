@@ -365,6 +365,128 @@ public class ResourceTests
             text.Text);
     }
 
+    [Fact]
+    public async Task RelinkStageRewritesOnlyConvertedReferences()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ungodot-relink", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(root, "scene.tscn"),
+                "[gd_scene load_steps=2 format=2]\n\n" +
+                "[ext_resource path=\"res://a/thing.material\" type=\"Material\" id=1]\n\n" +
+                "[node name=\"X\" type=\"Node\"]\nmaterial = ExtResource( 1 )\n");
+            File.WriteAllText(
+                Path.Combine(root, "script.gd"),
+                "const M = preload(\"res://a/thing.material\")\nconst T = preload(\"res://a/tex.png\")\n");
+            File.WriteAllText(
+                Path.Combine(root, "project.godot"),
+                "[application]\n\nrun/main_scene=\"res://level.scn\"\n");
+            File.WriteAllText(
+                Path.Combine(root, "nested.tres"),
+                "[gd_resource type=\"Resource\" format=2]\n\n[resource]\ninner = \"res://a/thing.material::3\"\n");
+
+            var context = new RecoveryContext
+            {
+                Root = root,
+                Options = new RecoveryOptions(),
+                Report = new RecoveryReport { Root = root },
+                EngineMajor = 3,
+            };
+            context.ConvertedResources["res://a/thing.material"] = "res://a/thing.tres";
+            context.ConvertedResources["res://level.scn"] = "res://level.tscn";
+
+            var result = new RecoveryStageResult { Stage = "references" };
+            await new RelinkStage().RunAsync(context, result, CancellationToken.None);
+
+            Assert.Contains("path=\"res://a/thing.tres\"", File.ReadAllText(Path.Combine(root, "scene.tscn")));
+            string script = File.ReadAllText(Path.Combine(root, "script.gd"));
+            Assert.Contains("preload(\"res://a/thing.tres\")", script);
+            Assert.Contains("preload(\"res://a/tex.png\")", script);
+            Assert.Contains(
+                "run/main_scene=\"res://level.tscn\"", File.ReadAllText(Path.Combine(root, "project.godot")));
+            Assert.Contains(
+                "inner = \"res://a/thing.tres::3\"", File.ReadAllText(Path.Combine(root, "nested.tres")));
+            Assert.Equal(4, result.Counters["files updated"]);
+            Assert.Equal(4, result.Counters["references updated"]);
+
+            // Running again changes nothing.
+            var again = new RecoveryStageResult { Stage = "references" };
+            await new RelinkStage().RunAsync(context, again, CancellationToken.None);
+            Assert.Empty(again.Counters);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch
+            {
+                // best effort
+            }
+        }
+    }
+
+    [Fact]
+    public async Task StageConvertsAndRelinksScenesThatUseAMaterial()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ungodot-relink-e2e", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllBytes(
+                Path.Combine(root, "thing.material"),
+                BuildResource("", [], [new TestObject("ShaderMaterial", "res://thing.material", [])]));
+
+            byte[] bundled = VDictionary(
+                ("names", VStringArray("Root", "Node2D", "material_override")),
+                ("variants", VArray(VObjectExternalIndex(0))),
+                ("nodes", VIntArray(
+                    -1, -1, 1, 0, -1, 1, 2, 0, 0)), // one property: material_override = variants[0]
+                ("conns", VIntArray()));
+
+            File.WriteAllBytes(
+                Path.Combine(root, "level.scn"),
+                BuildResource("PackedScene", [("Material", "res://thing.material")], [
+                    new TestObject("PackedScene", "local://0", [("_bundled", bundled)]),
+                ]));
+
+            var context = new RecoveryContext
+            {
+                Root = root,
+                Options = new RecoveryOptions(),
+                Report = new RecoveryReport { Root = root },
+                EngineMajor = 3,
+            };
+
+            var converted = new RecoveryStageResult { Stage = "resources" };
+            await new ResourceStage().RunAsync(context, converted, CancellationToken.None);
+            Assert.Equal(1, converted.Counters["scenes"]);
+            Assert.Equal(2, context.ConvertedResources.Count);
+
+            var relinked = new RecoveryStageResult { Stage = "references" };
+            await new RelinkStage().RunAsync(context, relinked, CancellationToken.None);
+
+            string scene = File.ReadAllText(Path.Combine(root, "level.tscn"));
+            Assert.Contains("[ext_resource path=\"res://thing.tres\" type=\"Material\" id=1]", scene);
+            Assert.Contains("material_override = ExtResource( 1 )", scene);
+            Assert.Equal(1, relinked.Counters["files updated"]);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch
+            {
+                // best effort
+            }
+        }
+    }
+
     private static byte[] MinimalScene()
     {
         byte[] bundled = VDictionary(
