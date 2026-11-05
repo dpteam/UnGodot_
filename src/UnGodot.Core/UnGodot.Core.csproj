@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>UnGodot.Core</RootNamespace>
+    <AssemblyName>UnGodot.Core</AssemblyName>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!--
+      CA5351: MD5 is not a security choice here, it is part of Godot's on-disk format
+              (file table and per-file checksums), so it has to be used.
+      CA1051: the extraction counters are public fields on purpose: they are updated with
+              Interlocked while files are extracted in parallel.
+    -->
+    <NoWarn>$(NoWarn);CA5351;CA1051</NoWarn>
+  </PropertyGroup>
+
+</Project>

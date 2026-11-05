@@ -1,0 +1,27 @@
+# Reference sources (clone of gore, upstream)
+refs/
+
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# Local test data, dumps, recovered projects
+localdata/
+testdata/
+*.pck
+*.cpk
+*.apk
+*.dmp
+
+# Logs and scratch
+*.log
+logs/
+*.part
+*.tmp
