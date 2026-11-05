@@ -89,7 +89,7 @@ public static class VariantTextWriter
                 break;
 
             case VariantType.Quat:
-                WriteVector(output, engineMajor == 2 ? "Quat" : "Quat", value.AsFloats(), script);
+                WriteVector(output, engineMajor >= 4 ? "Quaternion" : "Quat", value.AsFloats(), script);
                 break;
 
             case VariantType.Aabb:
@@ -101,11 +101,38 @@ public static class VariantTextWriter
                 break;
 
             case VariantType.Transform:
-                WriteVector(output, "Transform", value.AsFloats(), script);
+                WriteVector(output, engineMajor >= 4 ? "Transform3D" : "Transform", value.AsFloats(), script);
                 break;
 
             case VariantType.Color:
                 WriteVector(output, "Color", value.AsFloats(), script);
+                break;
+
+            case VariantType.Vector4:
+                WriteVector(output, "Vector4", value.AsFloats(), script);
+                break;
+
+            case VariantType.Projection:
+                WriteVector(output, "Projection", value.AsFloats(), script);
+                break;
+
+            case VariantType.Vector2i:
+            case VariantType.Rect2i:
+            case VariantType.Vector3i:
+            case VariantType.Vector4i:
+                WriteIntVector(output, TypeName(value.Type), (int[])value.Value!);
+                break;
+
+            case VariantType.StringName:
+                output.Append("&\"").Append(Escape(value.AsString())).Append('"');
+                break;
+
+            case VariantType.Callable:
+                output.Append("Callable()");
+                break;
+
+            case VariantType.Signal:
+                output.Append("Signal()");
                 break;
 
             case VariantType.NodePath:
@@ -181,7 +208,7 @@ public static class VariantTextWriter
             case VariantType.PoolByteArray:
             {
                 byte[] bytes = (byte[])value.Value!;
-                output.Append("PoolByteArray( ");
+                output.Append(PackedName(VariantType.PoolByteArray, engineMajor) + "( ");
                 for (int i = 0; i < bytes.Length; i++)
                 {
                     if (i > 0)
@@ -199,21 +226,23 @@ public static class VariantTextWriter
             case VariantType.PoolIntArray:
             {
                 int[] values = (int[])value.Value!;
-                WriteNumbers(output, "PoolIntArray", values.Select(v => v.ToString(CultureInfo.InvariantCulture)), script);
+                WriteNumbers(output, PackedName(VariantType.PoolIntArray, engineMajor),
+                    values.Select(v => v.ToString(CultureInfo.InvariantCulture)), script);
                 break;
             }
 
             case VariantType.PoolRealArray:
             {
                 float[] values = (float[])value.Value!;
-                WriteNumbers(output, "PoolRealArray", values.Select(v => FormatNumber(v, script)), script);
+                WriteNumbers(output, PackedName(VariantType.PoolRealArray, engineMajor),
+                    values.Select(v => FormatNumber(v, script)), script);
                 break;
             }
 
             case VariantType.PoolStringArray:
             {
                 string[] values = (string[])value.Value!;
-                output.Append("PoolStringArray( ");
+                output.Append(PackedName(VariantType.PoolStringArray, engineMajor) + "( ");
                 for (int i = 0; i < values.Length; i++)
                 {
                     if (i > 0)
@@ -228,13 +257,30 @@ public static class VariantTextWriter
                 break;
             }
 
+            case VariantType.PoolInt64Array:
+            {
+                long[] values = (long[])value.Value!;
+                WriteNumbers(output, PackedName(VariantType.PoolInt64Array, engineMajor),
+                    values.Select(v => v.ToString(CultureInfo.InvariantCulture)), script);
+                break;
+            }
+
+            case VariantType.PoolFloat64Array:
+            {
+                double[] values = (double[])value.Value!;
+                WriteNumbers(output, PackedName(VariantType.PoolFloat64Array, engineMajor),
+                    values.Select(v => FormatNumber(v, script)), script);
+                break;
+            }
+
             case VariantType.PoolVector2Array:
             case VariantType.PoolVector3Array:
+            case VariantType.PoolVector4Array:
             case VariantType.PoolColorArray:
             {
                 // Godot's text format flattens struct arrays into plain numbers:
                 // PoolColorArray( 1, 0, 0, 1, 0, 1, 0, 1 ).
-                string name = TypeName(value.Type);
+                string name = PackedName(value.Type, engineMajor);
                 float[] values = value.AsFloats();
                 output.Append(name + "( ");
                 for (int i = 0; i < values.Length; i++)
@@ -314,6 +360,49 @@ public static class VariantTextWriter
         output.Append(" )");
     }
 
+    private static void WriteIntVector(StringBuilder output, string name, int[] values)
+    {
+        output.Append(name + "( ");
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (i > 0)
+            {
+                output.Append(", ");
+            }
+
+            output.Append(values[i].ToString(CultureInfo.InvariantCulture));
+        }
+
+        output.Append(" )");
+    }
+
+    /// <summary>
+    /// Name of a packed array in the given engine generation: Godot 3 calls them
+    /// <c>Pool*Array</c>, Godot 4 <c>Packed*Array</c> (and splits ints/floats by width).
+    /// </summary>
+    public static string PackedName(VariantType type, int engineMajor)
+    {
+        if (engineMajor < 4)
+        {
+            return TypeName(type);
+        }
+
+        return type switch
+        {
+            VariantType.PoolByteArray => "PackedByteArray",
+            VariantType.PoolIntArray => "PackedInt32Array",
+            VariantType.PoolInt64Array => "PackedInt64Array",
+            VariantType.PoolRealArray => "PackedFloat32Array",
+            VariantType.PoolFloat64Array => "PackedFloat64Array",
+            VariantType.PoolStringArray => "PackedStringArray",
+            VariantType.PoolVector2Array => "PackedVector2Array",
+            VariantType.PoolVector3Array => "PackedVector3Array",
+            VariantType.PoolVector4Array => "PackedVector4Array",
+            VariantType.PoolColorArray => "PackedColorArray",
+            _ => TypeName(type),
+        };
+    }
+
     public static string TypeName(VariantType type) => type switch
     {
         VariantType.Nil => "Nil",
@@ -343,6 +432,18 @@ public static class VariantTextWriter
         VariantType.PoolVector2Array => "PoolVector2Array",
         VariantType.PoolVector3Array => "PoolVector3Array",
         VariantType.PoolColorArray => "PoolColorArray",
+        VariantType.Vector2i => "Vector2i",
+        VariantType.Rect2i => "Rect2i",
+        VariantType.Vector3i => "Vector3i",
+        VariantType.Vector4 => "Vector4",
+        VariantType.Vector4i => "Vector4i",
+        VariantType.Projection => "Projection",
+        VariantType.StringName => "StringName",
+        VariantType.Callable => "Callable",
+        VariantType.Signal => "Signal",
+        VariantType.PoolInt64Array => "PoolInt64Array",
+        VariantType.PoolFloat64Array => "PoolFloat64Array",
+        VariantType.PoolVector4Array => "PoolVector4Array",
         _ => type.ToString(),
     };
 

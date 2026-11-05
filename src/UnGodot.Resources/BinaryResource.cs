@@ -8,6 +8,9 @@ public sealed class ExternalResourceEntry
 {
     public required string Type { get; init; }
     public required string Path { get; init; }
+
+    /// <summary>Godot 4 resource UID (<c>0xFFFFFFFFFFFFFFFF</c> when the file has none).</summary>
+    public ulong Uid { get; init; } = BinaryResource.InvalidUid;
 }
 
 public sealed class InternalResourceEntry
@@ -25,12 +28,22 @@ public sealed class BinaryObject
 }
 
 /// <summary>
-/// A parsed Godot 3 binary resource (<c>.res</c>, <c>.scn</c>, <c>.material</c>,
+/// A parsed Godot binary resource (<c>.res</c>, <c>.scn</c>, <c>.material</c>,
 /// <c>*.converted.res</c>): header, string table, external/internal resource tables and the
-/// objects with their property lists.
+/// objects with their property lists. Godot 2/3 (format 0-3) and Godot 4 (format 4-6) are
+/// both supported.
 /// </summary>
 public sealed class BinaryResource
 {
+    /// <summary>Godot 4's "no uid" sentinel.</summary>
+    public const ulong InvalidUid = ulong.MaxValue;
+
+    private const uint FlagNamedSceneIds = 1;
+    private const uint FlagUids = 2;
+    private const uint FlagRealTIsDouble = 4;
+    private const uint FlagHasScriptClass = 8;
+    private const int ReservedFieldsGodot4 = 11;
+
     private BinaryResource()
     {
     }
@@ -38,8 +51,20 @@ public sealed class BinaryResource
     public int VersionMajor { get; private init; }
     public int VersionMinor { get; private init; }
     public int FormatVersion { get; private init; }
-    public bool RealIsDouble { get; private init; }
+    public bool RealIsDouble { get; private set; }
     public bool BigEndian { get; private init; }
+
+    /// <summary>Godot 4 header flags (0 for Godot 2/3 files).</summary>
+    public uint Flags { get; private set; }
+
+    /// <summary>Godot 4 resource UID, or <see cref="InvalidUid"/>.</summary>
+    public ulong Uid { get; private set; } = InvalidUid;
+
+    /// <summary>Godot 4 global script class name, when the header stores one.</summary>
+    public string? ScriptClass { get; private set; }
+
+    /// <summary>True when the file references resources by UID as well as by path.</summary>
+    public bool UsesUids => (Flags & FlagUids) != 0;
 
     /// <summary>The class name stored in the header (Sonic's converted files leave it empty).</summary>
     public string Type { get; private set; } = string.Empty;
@@ -97,9 +122,16 @@ public sealed class BinaryResource
         _ = BinaryPrimitives.ReadUInt64LittleEndian(body.AsSpan(position));
         position += 8; // import metadata offset
 
-        for (int i = 0; i < 14; i++)
+        if (resource.VersionMajor >= 4)
         {
-            _ = ReadU32(body, ref position); // reserved
+            ParseGodot4Header(body, ref position, resource);
+        }
+        else
+        {
+            for (int i = 0; i < 14; i++)
+            {
+                _ = ReadU32(body, ref position); // reserved
+            }
         }
 
         uint stringCount = ReadU32(body, ref position);
@@ -121,11 +153,18 @@ public sealed class BinaryResource
 
         for (uint i = 0; i < externalCount; i++)
         {
-            resource.ExternalResources.Add(new ExternalResourceEntry
+            var entry = new ExternalResourceEntry
             {
                 Type = ReadUnicodeString(body, ref position),
                 Path = ReadUnicodeString(body, ref position),
-            });
+            };
+
+            if (resource.UsesUids)
+            {
+                entry = new ExternalResourceEntry { Type = entry.Type, Path = entry.Path, Uid = ReadU64(body, ref position) };
+            }
+
+            resource.ExternalResources.Add(entry);
         }
 
         uint internalCount = ReadU32(body, ref position);
@@ -167,8 +206,9 @@ public sealed class BinaryResource
                 throw new ResourceFormatException($"implausible property count {propertyCount} in '{entry.Path}'");
             }
 
-            var reader = new LegacyVariantReader(
-                body, objectPosition, resource.Strings, resource.RealIsDouble, resource.FormatVersion);
+            var reader = new ResourceVariantReader(
+                body, objectPosition, resource.Strings, resource.RealIsDouble, resource.FormatVersion,
+                resource.VersionMajor);
 
             for (uint i = 0; i < propertyCount; i++)
             {
@@ -181,6 +221,27 @@ public sealed class BinaryResource
         }
 
         return resource;
+    }
+
+    /// <summary>
+    /// Reads the Godot 4 header tail: flags, uid, optional script class and the reserved
+    /// fields (see <c>ResourceLoaderBinary::open</c> in <c>resource_format_binary.cpp</c>).
+    /// </summary>
+    private static void ParseGodot4Header(byte[] body, ref int position, BinaryResource resource)
+    {
+        resource.Flags = ReadU32(body, ref position);
+        resource.RealIsDouble = (resource.Flags & FlagRealTIsDouble) != 0;
+        resource.Uid = ReadU64(body, ref position);
+
+        if ((resource.Flags & FlagHasScriptClass) != 0)
+        {
+            resource.ScriptClass = ReadUnicodeString(body, ref position);
+        }
+
+        for (int i = 0; i < ReservedFieldsGodot4; i++)
+        {
+            _ = ReadU32(body, ref position);
+        }
     }
 
     internal static string ReadUnicodeString(byte[] data, ref int position)
@@ -205,6 +266,18 @@ public sealed class BinaryResource
 
         uint value = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(position));
         position += 4;
+        return value;
+    }
+
+    internal static ulong ReadU64(byte[] data, ref int position)
+    {
+        if (position + 8 > data.Length)
+        {
+            throw new ResourceFormatException("the resource file is truncated");
+        }
+
+        ulong value = BinaryPrimitives.ReadUInt64LittleEndian(data.AsSpan(position));
+        position += 8;
         return value;
     }
 

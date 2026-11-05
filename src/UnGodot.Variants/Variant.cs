@@ -1,6 +1,10 @@
 namespace UnGodot.Variants;
 
-/// <summary>Godot 3 variant type ids (the same order Godot 2 used for its basic types).</summary>
+/// <summary>
+/// Godot variant type ids as used by the Godot 3 <c>marshalls</c> encoding (the same order
+/// Godot 2 used for its basic types). The Godot 4 ids differ; <see cref="VariantReader"/>
+/// maps them onto this enum so callers never see two numbering schemes.
+/// </summary>
 public enum VariantType
 {
     Nil = 0,
@@ -30,6 +34,20 @@ public enum VariantType
     PoolVector2Array = 24,
     PoolVector3Array = 25,
     PoolColorArray = 26,
+
+    // Godot 4 additions, only produced by the Godot 4 decoders.
+    Vector2i = 27,
+    Rect2i = 28,
+    Vector3i = 29,
+    Vector4 = 30,
+    Vector4i = 31,
+    Projection = 32,
+    StringName = 33,
+    Callable = 34,
+    Signal = 35,
+    PoolInt64Array = 36,
+    PoolFloat64Array = 37,
+    PoolVector4Array = 38,
 }
 
 /// <summary>A node path, kept structurally because Godot stores names and subnames separately.</summary>

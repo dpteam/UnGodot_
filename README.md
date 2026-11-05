@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 89 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
+dotnet test                       # 96 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -177,13 +177,13 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.Core/Gdre` | GDRE Tools lookup, download, output renderer |
 | `src/UnGodot.Core/Godot` | editor version detection and downloads |
 | `src/UnGodot.Core/Plugins` | GDExtension native library restoration (FMOD/Spine/Sentry) |
-| `src/UnGodot.Variants` | Godot binary variants (gdc constants, project.binary, .res) and text writer |
+| `src/UnGodot.Variants` | Godot 3/4 binary variants (gdc constants, project.binary, .res) and text writer |
 | `src/UnGodot.GDScript` | GDScript bytecode container, revision detection, decompiler |
 | `src/UnGodot.Cli` | the `ungodot` command line |
 | `src/UnGodot.Recovery` | recovery pipeline, project.binary > project.godot, stages and report |
 | `src/UnGodot.Textures` | Godot 3 stream textures, BC1/BC2/BC3/BC4/BC5 + raw formats, PNG writer |
-| `src/UnGodot.Resources` | binary resources (RSRC/RSCC), legacy variants, `.tres`/`.tscn` writer |
-| `tests/UnGodot.Tests` | 89 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
+| `src/UnGodot.Resources` | binary resources (RSRC/RSCC, Godot 3 and 4), variant decoding, `.tres`/`.tscn` writer |
+| `tests/UnGodot.Tests` | 96 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
 
 `refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
 C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
@@ -297,9 +297,27 @@ Validated on Sonic Colors Ultimate, all six packs (11 GiB, ~80 000 files extract
 A random sample of the text output — scenes up to 1.2 MB, meshes and resources — re-saves
 through the engine's own text loader without errors.
 
+## Godot 4
+
+The binary variant decoder handles both generations: Godot 3 and Godot 4 `marshalls` (used by
+`project.binary` and script constants) and the separate `VARIANT_*` table Godot 4 uses inside
+binary resources. That covers the types 3.x never had — `Vector2i`/`Vector3i`/`Vector4i`,
+`Vector4`, `Projection`, `StringName`, `Callable`, `Signal`, `PackedInt64Array`,
+`PackedFloat64Array` and `PackedVector4Array` — plus the 4.x resource header (flags, uid,
+global script class, 11 reserved fields, per-external uids).
+
+Godot 4 resources and scenes therefore convert to text as well, in the `format=3` dialect:
+string resource ids (`id="1_hero"`, `SubResource("Gradient_x")`), `Packed*Array` names,
+`Transform3D`/`Quaternion`, and connection `unbinds`. The conversion is validated by round
+tripping through the engine: GDRE Tools compiles a text file to a Godot 4 binary, this tool
+decodes it, and the text it produces compiles back to a byte-identical resource.
+
+Godot 4 *scripts* are still out of scope: `GDSC` v100+ stores a Zstandard-compressed token
+stream that has not been ported yet.
+
 Still to come, in this order:
 
-* the Godot 4 variant decoder, so `project.binary`, scripts and resources of 4.x projects work;
+* GDScript 2.0 bytecode (`GDSC` v100+) for Godot 4 scripts;
 * an option to archive the binary originals once the project is fully text-based.
 
 ## Verified on real data

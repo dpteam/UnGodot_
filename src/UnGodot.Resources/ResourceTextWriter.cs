@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using UnGodot.Variants;
 
@@ -47,17 +48,34 @@ public static class ResourceTextWriter
     {
         var result = new ResourceTextResult { Text = string.Empty, IsScene = false };
         var body = new StringBuilder(8192);
+        bool godot4 = resource.VersionMajor >= 4;
         int subCount = Math.Max(0, resource.Objects.Count - 1);
         int loadSteps = 1 + resource.ExternalResources.Count + subCount;
 
         string type = string.IsNullOrEmpty(main.Type) ? resource.Type : main.Type;
-        body.Append("[gd_resource type=\"").Append(type).Append("\" load_steps=").Append(loadSteps).Append(" format=2]\n\n");
+        body.Append("[gd_resource type=\"").Append(type).Append('"');
+        if (!godot4 || loadSteps > 1)
+        {
+            body.Append(" load_steps=").Append(loadSteps);
+        }
+
+        body.Append(godot4 ? " format=3]" : " format=2]").Append("\n\n");
+
+        ResourceIds ids = ResourceIds.Build(resource, godot4);
 
         for (int i = 0; i < resource.ExternalResources.Count; i++)
         {
             ExternalResourceEntry ext = resource.ExternalResources[i];
-            body.Append("[ext_resource path=\"").Append(Escape(ext.Path)).Append("\" type=\"")
-                .Append(ext.Type).Append("\" id=").Append(i + 1).Append("]\n");
+            if (godot4)
+            {
+                body.Append("[ext_resource type=\"").Append(ext.Type).Append("\" path=\"")
+                    .Append(Escape(ext.Path)).Append("\" id=\"").Append(ids.External[i]).Append("\"]\n");
+            }
+            else
+            {
+                body.Append("[ext_resource path=\"").Append(Escape(ext.Path)).Append("\" type=\"")
+                    .Append(ext.Type).Append("\" id=").Append(i + 1).Append("]\n");
+            }
         }
 
         if (resource.ExternalResources.Count > 0)
@@ -70,13 +88,14 @@ public static class ResourceTextWriter
         for (int i = 0; i < resource.Objects.Count - 1; i++)
         {
             BinaryObject sub = resource.Objects[i];
-            body.Append("[sub_resource type=\"").Append(sub.Type).Append("\" id=").Append(i + 1).Append("]\n");
-            WriteProperties(body, sub, resource, result, internalOrdinals);
+            body.Append("[sub_resource type=\"").Append(sub.Type).Append('"');
+            body.Append(godot4 ? " id=\"" + ids.Sub[i] + "\"]\n" : " id=" + (i + 1) + "]\n");
+            WriteProperties(body, sub, resource, result, internalOrdinals, ids);
             body.Append('\n');
         }
 
         body.Append("[resource]\n");
-        WriteProperties(body, main, resource, result, internalOrdinals);
+        WriteProperties(body, main, resource, result, internalOrdinals, ids);
 
         result.Text = body.ToString();
         return result;
@@ -87,13 +106,15 @@ public static class ResourceTextWriter
         BinaryObject obj,
         BinaryResource resource,
         ResourceTextResult result,
-        IReadOnlyDictionary<int, int> internalOrdinals)
+        IReadOnlyDictionary<int, int> internalOrdinals,
+        ResourceIds ids)
     {
-        Func<Variant, string?> resolver = value => ResolveReference(value, resource, result, internalOrdinals);
+        int engineMajor = resource.VersionMajor >= 4 ? 4 : 3;
+        Func<Variant, string?> resolver = value => ResolveReference(value, resource, result, internalOrdinals, ids);
         foreach (KeyValuePair<string, Variant> property in obj.Properties)
         {
             body.Append(property.Key).Append(" = ")
-                .Append(VariantTextWriter.Write(property.Value, 3, GodotTextStyle.Script, resolver))
+                .Append(VariantTextWriter.Write(property.Value, engineMajor, GodotTextStyle.Script, resolver))
                 .Append('\n');
         }
     }
@@ -105,9 +126,22 @@ public static class ResourceTextWriter
     /// </summary>
     private static Dictionary<int, int> BuildInternalOrdinals(BinaryResource resource)
     {
+        var ordinals = new Dictionary<int, int>();
+
+        // Godot 4 (format 4+) references internal resources by their table index; the older
+        // formats reference them by the subindex that "local://N" carries.
+        if (resource.VersionMajor >= 4)
+        {
+            for (int i = 0; i < resource.Objects.Count; i++)
+            {
+                ordinals[i] = i;
+            }
+
+            return ordinals;
+        }
+
         // Subindices are assigned sparsely by the engine (a file whose sub-resource was
         // already saved in another file can jump to local://37), so this must be a map.
-        var ordinals = new Dictionary<int, int>();
         const string prefix = "local://";
         for (int i = 0; i < resource.InternalResources.Count && i < resource.Objects.Count; i++)
         {
@@ -131,7 +165,8 @@ public static class ResourceTextWriter
         Variant value,
         BinaryResource resource,
         ResourceTextResult result,
-        IReadOnlyDictionary<int, int> internalOrdinals)
+        IReadOnlyDictionary<int, int> internalOrdinals,
+        ResourceIds ids)
     {
         if (value.Type != VariantType.Object)
         {
@@ -143,6 +178,8 @@ public static class ResourceTextWriter
             return "null";
         }
 
+        bool godot4 = resource.VersionMajor >= 4;
+
         switch (reference.Kind)
         {
             case ResourceRefKind.Empty:
@@ -151,7 +188,9 @@ public static class ResourceTextWriter
             case ResourceRefKind.ExternalIndex:
                 if (reference.Index >= 0 && reference.Index < resource.ExternalResources.Count)
                 {
-                    return $"ExtResource( {reference.Index + 1} )";
+                    return godot4
+                        ? $"ExtResource(\"{ids.External[reference.Index]}\")"
+                        : $"ExtResource( {reference.Index + 1} )";
                 }
 
                 result.Notes.Add($"external resource index {reference.Index} is out of range");
@@ -162,7 +201,9 @@ public static class ResourceTextWriter
                 {
                     if (string.Equals(resource.ExternalResources[i].Path, reference.Path, StringComparison.Ordinal))
                     {
-                        return $"ExtResource( {i + 1} )";
+                        return godot4
+                            ? $"ExtResource(\"{ids.External[i]}\")"
+                            : $"ExtResource( {i + 1} )";
                     }
                 }
 
@@ -174,7 +215,9 @@ public static class ResourceTextWriter
                 int ordinal = internalOrdinals.TryGetValue(reference.Index, out int mapped) ? mapped : -1;
                 if (ordinal >= 0 && ordinal < resource.Objects.Count - 1)
                 {
-                    return $"SubResource( {ordinal + 1} )";
+                    return godot4
+                        ? $"SubResource(\"{ids.Sub[ordinal]}\")"
+                        : $"SubResource( {ordinal + 1} )";
                 }
 
                 result.Notes.Add($"internal resource index {reference.Index} is out of range");
@@ -183,6 +226,88 @@ public static class ResourceTextWriter
 
             default:
                 return "null";
+        }
+    }
+
+    /// <summary>
+    /// The <c>id="…"</c> strings Godot 4 uses for external and sub resources. Godot 3 used
+    /// plain integers; Godot 4 switched to unique strings, so the writer has to invent stable
+    /// ones that stay consistent with the references it emits.
+    /// </summary>
+    private sealed class ResourceIds
+    {
+        public required string[] External { get; init; }
+        public required string[] Sub { get; init; }
+
+        public static ResourceIds Build(BinaryResource resource, bool godot4)
+        {
+            int externalCount = resource.ExternalResources.Count;
+            int subCount = Math.Max(0, resource.Objects.Count - 1);
+            var external = new string[externalCount];
+            var sub = new string[subCount];
+
+            if (!godot4)
+            {
+                for (int i = 0; i < externalCount; i++)
+                {
+                    external[i] = (i + 1).ToString(CultureInfo.InvariantCulture);
+                }
+
+                for (int i = 0; i < subCount; i++)
+                {
+                    sub[i] = (i + 1).ToString(CultureInfo.InvariantCulture);
+                }
+
+                return new ResourceIds { External = external, Sub = sub };
+            }
+
+            var used = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < externalCount; i++)
+            {
+                string stem = Stem(Path.GetFileNameWithoutExtension(resource.ExternalResources[i].Path));
+                external[i] = Unique($"{i + 1}_{stem}", used);
+            }
+
+            const string prefix = "local://";
+            for (int i = 0; i < subCount; i++)
+            {
+                string path = i < resource.InternalResources.Count ? resource.InternalResources[i].Path : string.Empty;
+                string stem = path.StartsWith(prefix, StringComparison.Ordinal)
+                    ? path[prefix.Length..]
+                    : Stem(resource.Objects[i].Type);
+                sub[i] = Unique(stem.Length > 0 ? stem : $"sub_{i + 1}", used);
+            }
+
+            return new ResourceIds { External = external, Sub = sub };
+        }
+
+        private static string Unique(string candidate, HashSet<string> used)
+        {
+            if (used.Add(candidate))
+            {
+                return candidate;
+            }
+
+            for (int suffix = 2; ; suffix++)
+            {
+                string alternate = $"{candidate}_{suffix}";
+                if (used.Add(alternate))
+                {
+                    return alternate;
+                }
+            }
+        }
+
+        /// <summary>Keeps letters, digits and underscores; everything else becomes an underscore.</summary>
+        private static string Stem(string value)
+        {
+            var builder = new StringBuilder(value.Length);
+            foreach (char c in value)
+            {
+                builder.Append(char.IsLetterOrDigit(c) || c == '_' ? c : '_');
+            }
+
+            return builder.ToString();
         }
     }
 
@@ -213,6 +338,8 @@ public static class ResourceTextWriter
         Variant? connsVariant = Lookup(dictionary, "conns");
         Variant? nodePathsVariant = Lookup(dictionary, "node_paths");
         Variant? editableVariant = Lookup(dictionary, "editable_instances");
+        Variant? versionVariant = Lookup(dictionary, "version");
+        int packVersion = versionVariant?.Value is long version ? (int)version : 1;
 
         List<string> names = namesVariant?.Value is string[] strings ? strings.ToList() : [];
         IReadOnlyList<Variant> variants = variantsVariant?.Value as IReadOnlyList<Variant> ?? [];
@@ -253,7 +380,7 @@ public static class ResourceTextWriter
             nodes.Add(node);
         }
 
-        var connections = new List<(int From, int To, int Signal, int Method, int Flags, List<int> Binds)>();
+        var connections = new List<(int From, int To, int Signal, int Method, int Flags, List<int> Binds, int Unbinds)>();
         cursor = 0;
         while (cursor + 6 <= connsRaw.Length)
         {
@@ -269,7 +396,14 @@ public static class ResourceTextWriter
                 binds.Add(connsRaw[cursor++]);
             }
 
-            connections.Add((from, to, signal, method, flags, binds));
+            // Packed scene format 3 (Godot 4) stores the number of unbound arguments too.
+            int unbinds = 0;
+            if (packVersion >= 3 && cursor < connsRaw.Length)
+            {
+                unbinds = connsRaw[cursor++];
+            }
+
+            connections.Add((from, to, signal, method, flags, binds, unbinds));
         }
 
         // Paths: index-1 is the root; every node path is relative to it.
@@ -289,13 +423,30 @@ public static class ResourceTextWriter
         int loadSteps = 1 + resource.ExternalResources.Count + subCount;
 
         var body = new StringBuilder(16 * 1024);
-        body.Append("[gd_scene load_steps=").Append(loadSteps).Append(" format=2]\n\n");
+        bool godot4 = resource.VersionMajor >= 4;
+        body.Append("[gd_scene");
+        if (!godot4 || loadSteps > 1)
+        {
+            body.Append(" load_steps=").Append(loadSteps);
+        }
+
+        body.Append(godot4 ? " format=3]\n\n" : " format=2]\n\n");
+
+        ResourceIds ids = ResourceIds.Build(resource, godot4);
 
         for (int i = 0; i < resource.ExternalResources.Count; i++)
         {
             ExternalResourceEntry ext = resource.ExternalResources[i];
-            body.Append("[ext_resource path=\"").Append(Escape(ext.Path)).Append("\" type=\"")
-                .Append(ext.Type).Append("\" id=").Append(i + 1).Append("]\n");
+            if (godot4)
+            {
+                body.Append("[ext_resource type=\"").Append(ext.Type).Append("\" path=\"")
+                    .Append(Escape(ext.Path)).Append("\" id=\"").Append(ids.External[i]).Append("\"]\n");
+            }
+            else
+            {
+                body.Append("[ext_resource path=\"").Append(Escape(ext.Path)).Append("\" type=\"")
+                    .Append(ext.Type).Append("\" id=").Append(i + 1).Append("]\n");
+            }
         }
 
         if (resource.ExternalResources.Count > 0)
@@ -308,12 +459,14 @@ public static class ResourceTextWriter
         for (int i = 0; i < resource.Objects.Count - 1; i++)
         {
             BinaryObject sub = resource.Objects[i];
-            body.Append("[sub_resource type=\"").Append(sub.Type).Append("\" id=").Append(i + 1).Append("]\n");
-            WriteProperties(body, sub, resource, result, internalOrdinals);
+            body.Append("[sub_resource type=\"").Append(sub.Type).Append('"');
+            body.Append(godot4 ? " id=\"" + ids.Sub[i] + "\"]\n" : " id=" + (i + 1) + "]\n");
+            WriteProperties(body, sub, resource, result, internalOrdinals, ids);
             body.Append('\n');
         }
 
-        Func<Variant, string?> resolver = value => ResolveReference(value, resource, result, internalOrdinals);
+        int engineMajor = godot4 ? 4 : 3;
+        Func<Variant, string?> resolver = value => ResolveReference(value, resource, result, internalOrdinals, ids);
 
         for (int i = 0; i < nodes.Count; i++)
         {
@@ -363,7 +516,7 @@ public static class ResourceTextWriter
             {
                 bool placeholder = (node.Instance & FlagInstanceIsPlaceholder) != 0;
                 body.Append(placeholder ? " instance_placeholder=" : " instance=")
-                    .Append(InstanceReference(node.Instance, variants, resolver));
+                    .Append(InstanceReference(node.Instance, variants, resolver, engineMajor));
             }
 
             body.Append("]\n");
@@ -379,14 +532,14 @@ public static class ResourceTextWriter
                 string key = NameAt(names, propertyName);
                 Variant value = variants[propertyValue];
                 body.Append(key).Append(" = ")
-                    .Append(VariantTextWriter.Write(value, 3, GodotTextStyle.Script, resolver))
+                    .Append(VariantTextWriter.Write(value, engineMajor, GodotTextStyle.Script, resolver))
                     .Append('\n');
             }
 
             body.Append('\n');
         }
 
-        foreach ((int from, int to, int signal, int method, int flags, List<int> binds) in connections)
+        foreach ((int from, int to, int signal, int method, int flags, List<int> binds, int unbinds) in connections)
         {
             body.Append("[connection signal=\"").Append(Escape(NameAt(names, signal)))
                 .Append("\" from=\"").Append(Escape(ConnectionPath(paths, nodePaths, from)))
@@ -405,11 +558,16 @@ public static class ResourceTextWriter
 
                     if (binds[i] >= 0 && binds[i] < variants.Count)
                     {
-                        body.Append(VariantTextWriter.Write(variants[binds[i]], 3, GodotTextStyle.Script, resolver));
+                        body.Append(VariantTextWriter.Write(variants[binds[i]], engineMajor, GodotTextStyle.Script, resolver));
                     }
                 }
 
                 body.Append(" ]");
+            }
+
+            if (unbinds > 0)
+            {
+                body.Append(" unbinds=").Append(unbinds);
             }
 
             body.Append("]\n");
@@ -448,7 +606,13 @@ public static class ResourceTextWriter
         }
 
         int index = id & FlagMask;
-        return index >= 0 && index < paths.Length ? paths[index] : ".";
+        if (index == 0)
+        {
+            return ".";
+        }
+
+        string? path = index >= 0 && index < paths.Length ? paths[index] : null;
+        return path ?? ".";
     }
 
     private static string NodePathToString(IReadOnlyList<Variant> nodePaths, int index)
@@ -461,7 +625,7 @@ public static class ResourceTextWriter
         return ".";
     }
 
-    private static string InstanceReference(int instance, IReadOnlyList<Variant> variants, Func<Variant, string?> resolver)
+    private static string InstanceReference(int instance, IReadOnlyList<Variant> variants, Func<Variant, string?> resolver, int engineMajor)
     {
         int index = instance & FlagMask;
         if (index < 0 || index >= variants.Count)
@@ -470,7 +634,7 @@ public static class ResourceTextWriter
         }
 
         Variant value = variants[index];
-        return resolver(value) ?? VariantTextWriter.Write(value, 3, GodotTextStyle.Script, resolver);
+        return resolver(value) ?? VariantTextWriter.Write(value, engineMajor, GodotTextStyle.Script, resolver);
     }
 
     private static string NameAt(List<string> names, int index)
