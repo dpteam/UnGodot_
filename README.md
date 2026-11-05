@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 97 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
+dotnet test                       # 100 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -52,6 +52,7 @@ Commands:
   recover  <path>     Recover a full Godot project with GDRE Tools
   decompile <path>    Decompile .gdc bytecode to GDScript source (native, no GDRE)
   restore  <path>     Native pipeline: extract, project.godot, scripts, textures, resources
+  dump     [--name N] Carve resources, scripts, textures out of a running game (or a minidump)
   plugins  <project>  Restore the native GDExtension libraries
   editor   [project]  Install and/or open the Godot editor the project needs
   setup               Download GDRE Tools
@@ -183,7 +184,8 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.Recovery` | recovery pipeline, project.binary > project.godot, stages and report |
 | `src/UnGodot.Textures` | Godot 3 stream textures, BC1/BC2/BC3/BC4/BC5 + raw formats, PNG writer |
 | `src/UnGodot.Resources` | binary resources (RSRC/RSCC, Godot 3 and 4), variant decoding, `.tres`/`.tscn` writer |
-| `tests/UnGodot.Tests` | 97 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
+| `src/UnGodot.Dump` | process memory reading, signature scanning and artifact carving |
+| `tests/UnGodot.Tests` | 100 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
 
 `refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
 C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
@@ -318,6 +320,35 @@ stream that has not been ported yet.
 Still to come, in this order:
 
 * GDScript 2.0 bytecode (`GDSC` v100+) for Godot 4 scripts.
+
+## Runtime dumping
+
+`ungodot dump` reads a running game's address space and carves whatever the engine has already
+decrypted, validated by the same parsers the extraction pipeline uses:
+
+```bash
+ungodot dump --name SonicColorsUltimate -o ./from_memory
+ungodot dump --pid 1234 --minidump E:\dumps\game.dmp -o ./from_memory
+ungodot dump --from-dump E:\dumps\game.dmp -o ./from_memory   # offline, any OS
+```
+
+It looks for `GDSC` (GDScript bytecode), `RSRC`/`RSCC` (resources, decompressed), `GDST`
+(textures), `ECFG` (`project.binary`) and `GDPC` (packs), and writes only what parses: a magic
+number followed by garbage is rejected and counted, not saved.
+
+Measured on Sonic Colors Ultimate (packed 421 MB EXE with a 352 MB RWX section, game at the
+title screen, 2.5 GB resident):
+
+| | hits | accepted | unique artifacts |
+|---|---|---|---|
+| `GDSC` | 7 | 5 | 4 scripts |
+| `RSRC`/`RSCC` | 130 | 10 | 10 resources |
+| `GDST` | 1 | 1 | 1 texture |
+
+Every one of them was already in the packs, byte for byte — for a game whose packs are open,
+dumping adds nothing. It pays off when the pack key is unreachable, when content is generated
+or patched at runtime, or when the EXE protection blocks static unpacking (it does not block
+reading the heap). Reading a live process needs Windows; `--from-dump` works everywhere.
 
 ## Verified on real data
 

@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\UnGodot.GDScript\UnGodot.GDScript.csproj" />
     <ProjectReference Include="..\..\src\UnGodot.Recovery\UnGodot.Recovery.csproj" />
     <ProjectReference Include="..\..\src\UnGodot.Textures\UnGodot.Textures.csproj" />
+    <ProjectReference Include="..\..\src\UnGodot.Dump\UnGodot.Dump.csproj" />
   </ItemGroup>
 
 </Project>

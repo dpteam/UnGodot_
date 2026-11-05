@@ -42,6 +42,18 @@ internal sealed class CliOptions
 
     /// <summary>Move converted binary originals to <c>.autoconverted/</c> on <c>restore</c>.</summary>
     public bool ArchiveBinary { get; set; }
+
+    /// <summary>dump: process id to read.</summary>
+    public int? Pid { get; set; }
+
+    /// <summary>dump: process name to read.</summary>
+    public string? ProcessName { get; set; }
+
+    /// <summary>dump: carve this minidump/memory image instead of a live process.</summary>
+    public string? FromDump { get; set; }
+
+    /// <summary>dump: also write a full-memory minidump before carving.</summary>
+    public string? MiniDump { get; set; }
     public bool? Mono { get; set; }
     public bool Templates { get; set; }
     public bool NoLaunch { get; set; }
@@ -67,6 +79,7 @@ internal static class CommandLine
           recover  <path>     Recover a full Godot project with GDRE Tools
           decompile <path>    Decompile .gdc bytecode to GDScript source (native)
           restore  <path>     Native recovery pipeline: extract, project.godot, scripts
+          dump     [--name N] Carve resources, scripts and textures out of a running game (or --from-dump)
           plugins  <project>  Restore the native GDExtension libraries
           editor   [project]  Install and/or open the Godot editor the project needs
           setup               Download GDRE Tools
@@ -102,6 +115,10 @@ internal static class CommandLine
               --no-textures     restore: skip .stex -> PNG conversion
               --no-resources    restore: skip binary resource/scene -> text conversion
               --archive-binary  restore: move converted binaries to .autoconverted/
+              --name <PROC>     dump: process name to read from memory
+              --pid <ID>        dump: process id (instead of --name)
+              --from-dump <F>   dump: carve a minidump/raw image instead of a live process
+              --minidump <F>    dump: also write a full memory dump before carving
               --spaces          decompile with spaces instead of tabs
               --tab-size <N>    decompile indentation width (default 4)
               --godot <VERSION> editor: version to use instead of the detected one
@@ -124,7 +141,7 @@ internal static class CommandLine
 
         var commands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "detect", "scan", "info", "key", "extract", "recover", "decompile", "restore", "plugins", "editor", "setup", "selftest", "help",
+            "detect", "scan", "info", "key", "extract", "recover", "decompile", "restore", "dump", "plugins", "editor", "setup", "selftest", "help",
         };
 
         for (int i = 0; i < args.Length; i++)
@@ -281,6 +298,26 @@ internal static class CommandLine
                         break;
                     case "--archive-binary":
                         options.ArchiveBinary = true;
+                        break;
+                    case "--pid":
+                        if (int.TryParse(Value(), out int pid) && pid > 0)
+                        {
+                            options.Pid = pid;
+                        }
+                        else
+                        {
+                            error = "--pid needs a process id";
+                        }
+
+                        break;
+                    case "--name":
+                        options.ProcessName = Value();
+                        break;
+                    case "--from-dump":
+                        options.FromDump = Value();
+                        break;
+                    case "--minidump":
+                        options.MiniDump = Value();
                         break;
                     case "--keep-gdc":
                         options.KeepGdc = true;

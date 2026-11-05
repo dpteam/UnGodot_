@@ -18,6 +18,7 @@
     <ProjectReference Include="..\UnGodot.Variants\UnGodot.Variants.csproj" />
     <ProjectReference Include="..\UnGodot.GDScript\UnGodot.GDScript.csproj" />
     <ProjectReference Include="..\UnGodot.Recovery\UnGodot.Recovery.csproj" />
+    <ProjectReference Include="..\UnGodot.Dump\UnGodot.Dump.csproj" />
   </ItemGroup>
 
 </Project>

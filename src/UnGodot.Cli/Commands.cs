@@ -30,6 +30,7 @@ internal static partial class Commands
             "recover" => await RecoverAsync(options, cancellationToken).ConfigureAwait(false),
             "decompile" => DecompileCommand.Run(options, cancellationToken),
             "restore" => Restore(options, cancellationToken),
+            "dump" => DumpCommand(options, cancellationToken),
             "plugins" => Plugins(options, cancellationToken),
             "editor" => await EditorAsync(options, cancellationToken).ConfigureAwait(false),
             "setup" => await SetupAsync(options, cancellationToken).ConfigureAwait(false),
