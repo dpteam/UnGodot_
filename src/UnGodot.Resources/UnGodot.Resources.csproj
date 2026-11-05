@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>UnGodot.Resources</RootNamespace>
+    <AssemblyName>UnGodot.Resources</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UnGodot.Core\UnGodot.Core.csproj" />
+    <ProjectReference Include="..\UnGodot.Variants\UnGodot.Variants.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- RSCC resources compress their body with Zstandard (Godot's FileAccessCompressed). -->
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.5" />
+  </ItemGroup>
+
+</Project>

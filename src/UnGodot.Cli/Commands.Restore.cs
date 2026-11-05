@@ -97,6 +97,7 @@ internal static partial class Commands
                 DecompileScripts = !options.NoScripts,
                 MoveCompiledScripts = !options.KeepGdc,
                 ConvertTextures = !options.NoTextures,
+                ConvertResources = !options.NoResources,
                 EngineVersionHint = options.EngineVersion,
                 EngineMajor = engineMajor,
             },
@@ -114,6 +115,11 @@ internal static partial class Commands
         if (!options.NoTextures)
         {
             stages.Add(new TextureStage());
+        }
+
+        if (!options.NoResources)
+        {
+            stages.Add(new ResourceStage());
         }
 
         RecoveryReport result = RecoveryPipeline

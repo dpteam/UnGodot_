@@ -21,12 +21,31 @@ public static class VariantTextWriter
 {
     public static string Write(Variant value, int engineMajor = 3, GodotTextStyle style = GodotTextStyle.Script)
     {
+        return Write(value, engineMajor, style, null);
+    }
+
+    public static string Write(
+        Variant value,
+        int engineMajor,
+        GodotTextStyle style,
+        Func<Variant, string?>? objectResolver)
+    {
         var builder = new StringBuilder();
-        Write(builder, value, engineMajor, style);
+        Write(builder, value, engineMajor, style, objectResolver);
         return builder.ToString();
     }
 
     public static void Write(StringBuilder output, Variant value, int engineMajor = 3, GodotTextStyle style = GodotTextStyle.Script)
+    {
+        Write(output, value, engineMajor, style, null);
+    }
+
+    public static void Write(
+        StringBuilder output,
+        Variant value,
+        int engineMajor,
+        GodotTextStyle style,
+        Func<Variant, string?>? objectResolver)
     {
         bool script = style == GodotTextStyle.Script;
 
@@ -110,7 +129,16 @@ public static class VariantTextWriter
                 break;
 
             case VariantType.Object:
-                WriteObject(output, value, engineMajor, style);
+                string? resolved = objectResolver?.Invoke(value);
+                if (resolved is not null)
+                {
+                    output.Append(resolved);
+                }
+                else
+                {
+                    WriteObject(output, value, engineMajor, style);
+                }
+
                 break;
 
             case VariantType.Dictionary:
@@ -119,9 +147,9 @@ public static class VariantTextWriter
                 output.Append("{\n");
                 for (int i = 0; i < entries.Count; i++)
                 {
-                    Write(output, entries[i].Key, engineMajor, style);
+                    Write(output, entries[i].Key, engineMajor, style, objectResolver);
                     output.Append(": ");
-                    Write(output, entries[i].Value, engineMajor, style);
+                    Write(output, entries[i].Value, engineMajor, style, objectResolver);
                     if (i < entries.Count - 1)
                     {
                         output.Append(",\n");
@@ -143,7 +171,7 @@ public static class VariantTextWriter
                         output.Append(", ");
                     }
 
-                    Write(output, items[i], engineMajor, style);
+                    Write(output, items[i], engineMajor, style, objectResolver);
                 }
 
                 output.Append(" ]");
@@ -204,42 +232,19 @@ public static class VariantTextWriter
             case VariantType.PoolVector3Array:
             case VariantType.PoolColorArray:
             {
-                int width = value.Type switch
-                {
-                    VariantType.PoolVector2Array => 2,
-                    VariantType.PoolVector3Array => 3,
-                    _ => 4,
-                };
-
-                string element = value.Type switch
-                {
-                    VariantType.PoolVector2Array => "Vector2",
-                    VariantType.PoolVector3Array => "Vector3",
-                    _ => "Color",
-                };
-
+                // Godot's text format flattens struct arrays into plain numbers:
+                // PoolColorArray( 1, 0, 0, 1, 0, 1, 0, 1 ).
                 string name = TypeName(value.Type);
                 float[] values = value.AsFloats();
                 output.Append(name + "( ");
-                for (int i = 0; i + width <= values.Length; i += width)
+                for (int i = 0; i < values.Length; i++)
                 {
                     if (i > 0)
                     {
                         output.Append(", ");
                     }
 
-                    output.Append(element).Append('(');
-                    for (int component = 0; component < width; component++)
-                    {
-                        if (component > 0)
-                        {
-                            output.Append(", ");
-                        }
-
-                        output.Append(FormatNumber(values[i + component], script));
-                    }
-
-                    output.Append(')');
+                    output.Append(FormatNumber(values[i], script));
                 }
 
                 output.Append(" )");
