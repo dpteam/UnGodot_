@@ -35,6 +35,7 @@ internal sealed class CliOptions
     public int TabSize { get; set; } = 4;
     public bool NoScripts { get; set; }
     public bool KeepGdc { get; set; }
+    public bool NoTextures { get; set; }
     public bool? Mono { get; set; }
     public bool Templates { get; set; }
     public bool NoLaunch { get; set; }
@@ -92,6 +93,7 @@ internal static class CommandLine
               --engine <VERSION> engine version hint (e.g. 3.1.2)
               --no-scripts      restore: skip script decompilation
               --keep-gdc        restore: keep compiled scripts next to the .gd
+              --no-textures     restore: skip .stex -> PNG conversion
               --spaces          decompile with spaces instead of tabs
               --tab-size <N>    decompile indentation width (default 4)
               --godot <VERSION> editor: version to use instead of the detected one
@@ -262,6 +264,9 @@ internal static class CommandLine
                         break;
                     case "--no-scripts":
                         options.NoScripts = true;
+                        break;
+                    case "--no-textures":
+                        options.NoTextures = true;
                         break;
                     case "--keep-gdc":
                         options.KeepGdc = true;

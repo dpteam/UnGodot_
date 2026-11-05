@@ -12,6 +12,9 @@ public sealed class RecoveryOptions
     /// <summary>Move compiled scripts to <c>.autoconverted/</c> after decompiling them.</summary>
     public bool MoveCompiledScripts { get; init; } = true;
 
+    /// <summary>Convert <c>.stex</c> stream textures to PNG.</summary>
+    public bool ConvertTextures { get; init; } = true;
+
     /// <summary>Engine version hint for the bytecode revision detection (e.g. <c>3.1</c>).</summary>
     public string? EngineVersionHint { get; init; }
 

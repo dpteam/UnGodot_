@@ -96,6 +96,7 @@ internal static partial class Commands
             {
                 DecompileScripts = !options.NoScripts,
                 MoveCompiledScripts = !options.KeepGdc,
+                ConvertTextures = !options.NoTextures,
                 EngineVersionHint = options.EngineVersion,
                 EngineMajor = engineMajor,
             },
@@ -104,9 +105,16 @@ internal static partial class Commands
             EngineMinor = engineMinor,
         };
 
-        IRecoveryStage[] stages = options.NoScripts
-            ? [new ProjectSettingsStage()]
-            : [new ProjectSettingsStage(), new ScriptStage()];
+        var stages = new List<IRecoveryStage> { new ProjectSettingsStage() };
+        if (!options.NoScripts)
+        {
+            stages.Add(new ScriptStage());
+        }
+
+        if (!options.NoTextures)
+        {
+            stages.Add(new TextureStage());
+        }
 
         RecoveryReport result = RecoveryPipeline
             .RunAsync(context, stages, cancellationToken)

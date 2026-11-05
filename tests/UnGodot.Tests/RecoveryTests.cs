@@ -27,7 +27,7 @@ public class RecoveryTests : IDisposable
     }
 
     [Fact]
-    public void PipelineWritesProjectGodotAndDecompilesScripts()
+    public async Task PipelineWritesProjectGodotAndDecompilesScripts()
     {
         File.WriteAllBytes(
             Path.Combine(_root, "project.binary"),
@@ -48,9 +48,8 @@ public class RecoveryTests : IDisposable
             EngineMinor = 1,
         };
 
-        RecoveryReport result = RecoveryPipeline
-            .RunAsync(context, [new ProjectSettingsStage(), new ScriptStage()])
-            .GetAwaiter().GetResult();
+        RecoveryReport result = await RecoveryPipeline
+            .RunAsync(context, [new ProjectSettingsStage(), new ScriptStage()]);
 
         Assert.True(result.Ok, string.Join("; ", result.Stages.Select(stage => stage.Error)));
 
@@ -72,7 +71,7 @@ public class RecoveryTests : IDisposable
     }
 
     [Fact]
-    public void PipelineKeepsCompiledScriptsWhenAsked()
+    public async Task PipelineKeepsCompiledScriptsWhenAsked()
     {
         Directory.CreateDirectory(Path.Combine(_root, "scripts"));
         Directory.CreateDirectory(Path.Combine(_root, "scripts"));
@@ -87,9 +86,8 @@ public class RecoveryTests : IDisposable
             EngineMinor = 1,
         };
 
-        RecoveryReport result = RecoveryPipeline
-            .RunAsync(context, [new ScriptStage()])
-            .GetAwaiter().GetResult();
+        RecoveryReport result = await RecoveryPipeline
+            .RunAsync(context, [new ScriptStage()]);
 
         Assert.True(result.Ok);
         Assert.True(File.Exists(Path.Combine(_root, "scripts", "player.gdc")));
@@ -97,7 +95,7 @@ public class RecoveryTests : IDisposable
     }
 
     [Fact]
-    public void AFailingStageDoesNotStopTheOthers()
+    public async Task AFailingStageDoesNotStopTheOthers()
     {
         // project.binary is truncated: the settings stage must fail, the script stage still runs.
         File.WriteAllBytes(Path.Combine(_root, "project.binary"), "ECFG"u8.ToArray());
@@ -112,9 +110,8 @@ public class RecoveryTests : IDisposable
             EngineMinor = 1,
         };
 
-        RecoveryReport result = RecoveryPipeline
-            .RunAsync(context, [new ProjectSettingsStage(), new ScriptStage()])
-            .GetAwaiter().GetResult();
+        RecoveryReport result = await RecoveryPipeline
+            .RunAsync(context, [new ProjectSettingsStage(), new ScriptStage()]);
 
         Assert.False(result.Stages[0].Ok);
         Assert.True(result.Stages[1].Ok);

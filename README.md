@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 55 tests: packs, crypto, key search, discovery, decompiler, recovery
+dotnet test                       # 65 tests: packs, crypto, key search, discovery, decompiler, recovery, textures
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -51,7 +51,7 @@ Commands:
   extract  <path>     Extract the contents (all packs found, merged)
   recover  <path>     Recover a full Godot project with GDRE Tools
   decompile <path>    Decompile .gdc bytecode to GDScript source (native, no GDRE)
-  restore  <path>     Native pipeline: extract, project.godot, decompiled scripts
+  restore  <path>     Native pipeline: extract, project.godot, scripts, textures
   plugins  <project>  Restore the native GDExtension libraries
   editor   [project]  Install and/or open the Godot editor the project needs
   setup               Download GDRE Tools
@@ -181,7 +181,8 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.GDScript` | GDScript bytecode container, revision detection, decompiler |
 | `src/UnGodot.Cli` | the `ungodot` command line |
 | `src/UnGodot.Recovery` | recovery pipeline, project.binary > project.godot, stages and report |
-| `tests/UnGodot.Tests` | 55 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery |
+| `src/UnGodot.Textures` | Godot 3 stream textures, BC1/BC2/BC3/BC4/BC5 + raw formats, PNG writer |
+| `tests/UnGodot.Tests` | 65 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures |
 
 `refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
 C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
@@ -226,7 +227,9 @@ files decompile to files **byte-identical** to GDRE Tools 2.7.4, with no engine 
 1. extract every pack found, base pack last;
 2. `project.binary` → `project.godot` (`ECFG` reader + Godot text writer);
 3. `.gdc` → `.gd` with the native decompiler, compiled scripts moved to `.autoconverted/`;
-4. a machine readable `ungodot_recovery.json` report.
+4. `.stex` → `.png` (BC1/BC2/BC3/BC4/BC5, raw L8/LA8/R8/RG8/RGB8/RGBA8/RGBA4444/RGBA5551,
+   RGBE9995, float/half formats);
+5. a machine readable `ungodot_recovery.json` report.
 
 ```bash
 ungodot restore "D:\Games\MyGame" -o ./project
@@ -234,16 +237,25 @@ ungodot restore game.pck --filter "*.gdc;project.binary" -o ./project   # quick 
 ```
 
 Stages fail independently: a broken stage is recorded in the report and the remaining ones
-still run. `--no-scripts`, `--keep-gdc` and `--engine 3.1.2` are available.
+still run. `--no-scripts`, `--no-textures`, `--keep-gdc` and `--engine 3.1.2` are available.
+
+Textures are exported with their original base name (`res://.import/hero.png-<md5>.s3tc.stex`
+becomes `hero.png`), the best decodable platform variant wins (desktop S3TC over ASTC or a
+`-low` variant), and same-named sources keep both files by suffixing the import hash. Mobile
+formats that need a full ASTC/ETC/PVRTC/BPTC decoder are reported instead of guessed.
 
 Validated on Sonic Colors Ultimate: the 35 project settings are written, GDRE Tools parses the
-resulting `project.godot` (and re-saves it line-for-line identical), and all 72 scripts of a
-multi-pack extraction decompile with revision 3.1.1.
+resulting `project.godot` (and re-saves it line-for-line identical), all 72 scripts of a
+multi-pack extraction decompile with revision 3.1.1, and 2 603 of the 2 605 stream textures of
+`sonic0.pck` convert to PNG in about 45 s (the two HDR ones included), with 188 name collisions
+kept as separate files. Decoded pages were checked visually against the game's UI and stage
+textures.
 
 Still to come, in this order:
 
-* `.stex`/`.ctex` → PNG (BC1/BC3/ETC2/raw) plus `.import` remapping;
-* binary scenes/resources (`.scn`/`.res`), which need the Godot 4 variant reader too;
+* binary scenes/resources (`.scn`/`.res`, `.tscn.converted.res`), which need the Godot 4
+  variant reader too — this is what rewrites `res://.import/...stex` references so a recovered
+  project actually opens with its scenes;
 * the Godot 4 variant decoder, so `project.binary` and scripts of 4.x projects work.
 
 ## Verified on real data
@@ -254,7 +266,10 @@ Sonic Colors Ultimate (`\\DPT0\d$\Acorn`, Godot 3.1.2 pack v1, 11 GiB in 6 packs
 * every pack is parsed and its table read (9 477 / 8 827 / 6 972 / 33 337 / 4 783 / 14 001 files);
 * a full extraction of `sonic5.pck` produced 14 001 files / 852 MB with zero failures in 53 s
   over SMB;
-* GDRE Tools recovered the extracted sample into a Godot 3.1.2 project.
+* GDRE Tools recovered the extracted sample into a Godot 3.1.2 project;
+* 2 603 of 2 605 stream textures of `sonic0.pck` convert to PNG from their S3TC/RGBE9995 data
+  in ~45 s (BC1/BC3/RGBE9995 decoders, no external library), with the two remaining formats
+  reported instead of guessed.
 
 ## Limitations
 
