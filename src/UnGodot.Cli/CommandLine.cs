@@ -33,6 +33,8 @@ internal sealed class CliOptions
     public string? EngineVersion { get; set; }
     public bool Spaces { get; set; }
     public int TabSize { get; set; } = 4;
+    public bool NoScripts { get; set; }
+    public bool KeepGdc { get; set; }
     public bool? Mono { get; set; }
     public bool Templates { get; set; }
     public bool NoLaunch { get; set; }
@@ -57,6 +59,7 @@ internal static class CommandLine
           extract  <path>     Extract the contents (all packs found, merged)
           recover  <path>     Recover a full Godot project with GDRE Tools
           decompile <path>    Decompile .gdc bytecode to GDScript source (native)
+          restore  <path>     Native recovery pipeline: extract, project.godot, scripts
           plugins  <project>  Restore the native GDExtension libraries
           editor   [project]  Install and/or open the Godot editor the project needs
           setup               Download GDRE Tools
@@ -86,7 +89,9 @@ internal static class CommandLine
               --no-color        Disable ANSI colours
               --dry-run         recover: print the GDRE command without running it
               --no-plugins      recover: skip restoring GDExtension libraries
-              --engine <VERSION> decompile: engine version hint (e.g. 3.1.2)
+              --engine <VERSION> engine version hint (e.g. 3.1.2)
+              --no-scripts      restore: skip script decompilation
+              --keep-gdc        restore: keep compiled scripts next to the .gd
               --spaces          decompile with spaces instead of tabs
               --tab-size <N>    decompile indentation width (default 4)
               --godot <VERSION> editor: version to use instead of the detected one
@@ -109,7 +114,7 @@ internal static class CommandLine
 
         var commands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "detect", "scan", "info", "key", "extract", "recover", "decompile", "plugins", "editor", "setup", "selftest", "help",
+            "detect", "scan", "info", "key", "extract", "recover", "decompile", "restore", "plugins", "editor", "setup", "selftest", "help",
         };
 
         for (int i = 0; i < args.Length; i++)
@@ -254,6 +259,12 @@ internal static class CommandLine
                         break;
                     case "--engine":
                         options.EngineVersion = Value();
+                        break;
+                    case "--no-scripts":
+                        options.NoScripts = true;
+                        break;
+                    case "--keep-gdc":
+                        options.KeepGdc = true;
                         break;
                     case "--spaces":
                         options.Spaces = true;

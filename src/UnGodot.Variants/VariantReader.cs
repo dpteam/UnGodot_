@@ -311,7 +311,16 @@ public sealed class VariantReader
         }
 
         Require(length);
-        string value = Encoding.UTF8.GetString(_data, _position, length);
+
+        // Godot stores packed string array entries with a length that includes the NUL
+        // terminator. Godot's String stops at the first NUL, so drop it here too.
+        int contentLength = length;
+        if (contentLength > 0 && _data[_position + contentLength - 1] == 0)
+        {
+            contentLength--;
+        }
+
+        string value = Encoding.UTF8.GetString(_data, _position, contentLength);
         _position += length + Padding(length);
         return value;
     }

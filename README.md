@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 49 tests: packs, crypto, key search, discovery, decompiler
+dotnet test                       # 55 tests: packs, crypto, key search, discovery, decompiler, recovery
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -51,6 +51,7 @@ Commands:
   extract  <path>     Extract the contents (all packs found, merged)
   recover  <path>     Recover a full Godot project with GDRE Tools
   decompile <path>    Decompile .gdc bytecode to GDScript source (native, no GDRE)
+  restore  <path>     Native pipeline: extract, project.godot, decompiled scripts
   plugins  <project>  Restore the native GDExtension libraries
   editor   [project]  Install and/or open the Godot editor the project needs
   setup               Download GDRE Tools
@@ -179,7 +180,8 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.Variants` | Godot binary variants (gdc constants, project.binary, .res) and text writer |
 | `src/UnGodot.GDScript` | GDScript bytecode container, revision detection, decompiler |
 | `src/UnGodot.Cli` | the `ungodot` command line |
-| `tests/UnGodot.Tests` | 49 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler |
+| `src/UnGodot.Recovery` | recovery pipeline, project.binary > project.godot, stages and report |
+| `tests/UnGodot.Tests` | 55 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery |
 
 `refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
 C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
@@ -216,6 +218,33 @@ Status:
 
 Validation on Sonic Colors Ultimate (Godot 3.1.2, revision `514a3fb`): all 38 shipped `.gdc`
 files decompile to files **byte-identical** to GDRE Tools 2.7.4, with no engine hint passed.
+
+## Native recovery pipeline
+
+`ungodot restore` runs the native stages over a game (or an already extracted folder):
+
+1. extract every pack found, base pack last;
+2. `project.binary` → `project.godot` (`ECFG` reader + Godot text writer);
+3. `.gdc` → `.gd` with the native decompiler, compiled scripts moved to `.autoconverted/`;
+4. a machine readable `ungodot_recovery.json` report.
+
+```bash
+ungodot restore "D:\Games\MyGame" -o ./project
+ungodot restore game.pck --filter "*.gdc;project.binary" -o ./project   # quick look
+```
+
+Stages fail independently: a broken stage is recorded in the report and the remaining ones
+still run. `--no-scripts`, `--keep-gdc` and `--engine 3.1.2` are available.
+
+Validated on Sonic Colors Ultimate: the 35 project settings are written, GDRE Tools parses the
+resulting `project.godot` (and re-saves it line-for-line identical), and all 72 scripts of a
+multi-pack extraction decompile with revision 3.1.1.
+
+Still to come, in this order:
+
+* `.stex`/`.ctex` → PNG (BC1/BC3/ETC2/raw) plus `.import` remapping;
+* binary scenes/resources (`.scn`/`.res`), which need the Godot 4 variant reader too;
+* the Godot 4 variant decoder, so `project.binary` and scripts of 4.x projects work.
 
 ## Verified on real data
 

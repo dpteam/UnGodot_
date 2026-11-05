@@ -116,7 +116,7 @@ public static class VariantTextWriter
             case VariantType.Dictionary:
             {
                 IReadOnlyList<KeyValuePair<Variant, Variant>> entries = value.AsDictionary();
-                output.Append(script ? "{\n" : "{ ");
+                output.Append("{\n");
                 for (int i = 0; i < entries.Count; i++)
                 {
                     Write(output, entries[i].Key, engineMajor, style);
@@ -124,18 +124,18 @@ public static class VariantTextWriter
                     Write(output, entries[i].Value, engineMajor, style);
                     if (i < entries.Count - 1)
                     {
-                        output.Append(script ? ",\n" : ", ");
+                        output.Append(",\n");
                     }
                 }
 
-                output.Append(script ? "\n}" : " }");
+                output.Append("\n}");
                 break;
             }
 
             case VariantType.Array:
             {
                 IReadOnlyList<Variant> items = value.AsArray();
-                output.Append(script ? "[ " : "[");
+                output.Append("[ ");
                 for (int i = 0; i < items.Count; i++)
                 {
                     if (i > 0)
@@ -146,14 +146,14 @@ public static class VariantTextWriter
                     Write(output, items[i], engineMajor, style);
                 }
 
-                output.Append(script ? " ]" : "]");
+                output.Append(" ]");
                 break;
             }
 
             case VariantType.PoolByteArray:
             {
                 byte[] bytes = (byte[])value.Value!;
-                output.Append(script ? "PoolByteArray( " : "PoolByteArray(");
+                output.Append("PoolByteArray( ");
                 for (int i = 0; i < bytes.Length; i++)
                 {
                     if (i > 0)
@@ -164,7 +164,7 @@ public static class VariantTextWriter
                     output.Append(bytes[i].ToString(CultureInfo.InvariantCulture));
                 }
 
-                output.Append(script ? " )" : ")");
+                output.Append(" )");
                 break;
             }
 
@@ -185,7 +185,7 @@ public static class VariantTextWriter
             case VariantType.PoolStringArray:
             {
                 string[] values = (string[])value.Value!;
-                output.Append(script ? "PoolStringArray( " : "PoolStringArray(");
+                output.Append("PoolStringArray( ");
                 for (int i = 0; i < values.Length; i++)
                 {
                     if (i > 0)
@@ -196,7 +196,7 @@ public static class VariantTextWriter
                     output.Append('"').Append(Escape(values[i])).Append('"');
                 }
 
-                output.Append(script ? " )" : ")");
+                output.Append(" )");
                 break;
             }
 
@@ -220,7 +220,7 @@ public static class VariantTextWriter
 
                 string name = TypeName(value.Type);
                 float[] values = value.AsFloats();
-                output.Append(script ? name + "( " : name + "(");
+                output.Append(name + "( ");
                 for (int i = 0; i + width <= values.Length; i += width)
                 {
                     if (i > 0)
@@ -242,7 +242,7 @@ public static class VariantTextWriter
                     output.Append(')');
                 }
 
-                output.Append(script ? " )" : ")");
+                output.Append(" )");
                 break;
             }
 
@@ -277,7 +277,7 @@ public static class VariantTextWriter
 
     private static void WriteVector(StringBuilder output, string name, float[] values, bool script)
     {
-        output.Append(script ? name + "( " : name + "(");
+        output.Append(name + "( ");
         for (int i = 0; i < values.Length; i++)
         {
             if (i > 0)
@@ -288,12 +288,12 @@ public static class VariantTextWriter
             output.Append(FormatNumber(values[i], script));
         }
 
-        output.Append(script ? " )" : ")");
+        output.Append(" )");
     }
 
     private static void WriteNumbers(StringBuilder output, string name, IEnumerable<string> values, bool script)
     {
-        output.Append(script ? name + "( " : name + "(");
+        output.Append(name + "( ");
         bool first = true;
         foreach (string value in values)
         {
@@ -306,7 +306,7 @@ public static class VariantTextWriter
             output.Append(value);
         }
 
-        output.Append(script ? " )" : ")");
+        output.Append(" )");
     }
 
     public static string TypeName(VariantType type) => type switch

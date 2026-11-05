@@ -17,7 +17,7 @@ using PckFile = UnGodot.Core.Pck.Pck;
 
 namespace UnGodot.Cli;
 
-internal static class Commands
+internal static partial class Commands
 {
     public static async Task<int> RunAsync(CliOptions options, CancellationToken cancellationToken)
     {
@@ -29,6 +29,7 @@ internal static class Commands
             "extract" => Extract(options, cancellationToken),
             "recover" => await RecoverAsync(options, cancellationToken).ConfigureAwait(false),
             "decompile" => DecompileCommand.Run(options, cancellationToken),
+            "restore" => Restore(options, cancellationToken),
             "plugins" => Plugins(options, cancellationToken),
             "editor" => await EditorAsync(options, cancellationToken).ConfigureAwait(false),
             "setup" => await SetupAsync(options, cancellationToken).ConfigureAwait(false),
