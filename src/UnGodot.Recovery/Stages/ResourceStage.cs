@@ -54,6 +54,10 @@ public sealed class ResourceStage : IRecoveryStage
         // same text name the same one always wins and the report is reproducible.
         var claimed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+        // Imported scenes and meshes ship as .import/<name>-<hash>.scn|.mesh while scenes
+        // reference the original res://dir/name.dae|.obj; put the text file there.
+        Dictionary<string, string> importSources = ImportMetadata.ReadSourceMap(context.Root);
+
         foreach (string file in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -70,7 +74,11 @@ public sealed class ResourceStage : IRecoveryStage
 
                 BinaryResource resource = BinaryResource.Load(data);
                 ResourceTextResult text = ResourceTextWriter.Write(resource);
-                string target = TargetPath(file, text.IsScene);
+                string binaryPath = ToResPath(context.Root, file);
+                string? importedSource = importSources.GetValueOrDefault(binaryPath);
+                string target = importedSource is not null
+                    ? ImportedTextPath(context.Root, importedSource, text.IsScene)
+                    : TargetPath(file, text.IsScene);
                 if (string.Equals(Path.GetFullPath(target), Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase))
                 {
                     notBinary++;
@@ -100,6 +108,13 @@ public sealed class ResourceStage : IRecoveryStage
                 if (!string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase))
                 {
                     context.RemappedPaths[sourcePath] = targetPath;
+                }
+
+                if (importedSource is not null &&
+                    !string.Equals(importedSource, sourcePath, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(importedSource, targetPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    context.RemappedPaths[importedSource] = targetPath;
                 }
 
                 if (text.Notes.Count > 0)
@@ -184,6 +199,19 @@ public sealed class ResourceStage : IRecoveryStage
     /// <summary>Builds the <c>res://</c> path of a file inside the recovered project.</summary>
     internal static string ToResPath(string root, string path) =>
         "res://" + Path.GetRelativePath(root, path).Replace('\\', '/');
+
+    /// <summary>
+    /// Where the text form of an imported file goes: the source path with the text extension
+    /// (<c>models/hero.dae</c> → <c>models/hero.tscn</c>, <c>props/crate.obj</c> →
+    /// <c>props/crate.tres</c>).
+    /// </summary>
+    internal static string ImportedTextPath(string root, string sourcePath, bool isScene)
+    {
+        string relative = sourcePath.StartsWith("res://", StringComparison.Ordinal)
+            ? sourcePath["res://".Length..]
+            : sourcePath;
+        return Path.Combine(root, Path.ChangeExtension(relative, isScene ? ".tscn" : ".tres"));
+    }
 
     /// <summary>
     /// Keeps both files when two sources would write the same text path, e.g.

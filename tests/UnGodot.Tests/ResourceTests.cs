@@ -605,6 +605,47 @@ public class ResourceTests
         }
     }
 
+    [Fact]
+    public async Task ResourceStageWritesImportedScenesAtTheSourcePath()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ungodot-scenepath", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, ".import"));
+        Directory.CreateDirectory(Path.Combine(root, "models"));
+        try
+        {
+            File.WriteAllBytes(Path.Combine(root, ".import", "hero.dae-abc.scn"), MinimalScene());
+            File.WriteAllText(
+                Path.Combine(root, "models", "hero.dae.import"),
+                "[remap]\n\nimporter=\"scene\"\ntype=\"PackedScene\"\npath=\"res://.import/hero.dae-abc.scn\"\n");
+
+            var context = new RecoveryContext
+            {
+                Root = root,
+                Options = new RecoveryOptions(),
+                Report = new RecoveryReport { Root = root },
+                EngineMajor = 3,
+            };
+            var result = new RecoveryStageResult { Stage = "resources" };
+
+            await new ResourceStage().RunAsync(context, result, CancellationToken.None);
+
+            Assert.True(File.Exists(Path.Combine(root, "models", "hero.tscn")));
+            Assert.Equal("res://models/hero.tscn", context.RemappedPaths["res://models/hero.dae"]);
+            Assert.Equal("res://models/hero.tscn", context.RemappedPaths["res://.import/hero.dae-abc.scn"]);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch
+            {
+                // best effort
+            }
+        }
+    }
+
     private static byte[] MinimalScene()
     {
         byte[] bundled = VDictionary(

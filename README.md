@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 88 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
+dotnet test                       # 89 tests: packs, crypto, key search, discovery, decompiler, recovery, textures, resources
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -183,7 +183,7 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.Recovery` | recovery pipeline, project.binary > project.godot, stages and report |
 | `src/UnGodot.Textures` | Godot 3 stream textures, BC1/BC2/BC3/BC4/BC5 + raw formats, PNG writer |
 | `src/UnGodot.Resources` | binary resources (RSRC/RSCC), legacy variants, `.tres`/`.tscn` writer |
-| `tests/UnGodot.Tests` | 88 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
+| `tests/UnGodot.Tests` | 89 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler, recovery, textures, resources |
 
 `refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
 C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
@@ -265,6 +265,10 @@ references, and the `_bundled` dictionary of a `PackedScene`, which is rebuilt i
 placeholders, groups and connections are handled. The binary original is kept next to the
 text copy, because game resources still reference `res://thing.material`.
 
+Imported scenes and meshes get the same treatment as textures: `res://.import/hero.dae-<md5>.scn`
+becomes `res://models/hero.tscn` (the source path in the sidecar) and `props/crate.obj.mesh`
+becomes `props/crate.tres`, so the model references in scenes resolve to the text form.
+
 A final stage then rewrites those references: every complete quoted `res://…` value that
 points at a converted resource — in `.tscn` `[ext_resource]` headers, in `.tres` values, in
 decompiled `.gd` (`preload`/`load`) and in `project.godot` — is pointed at the text or PNG file.
@@ -276,15 +280,22 @@ Exported games also ship `x.tres.remap` files that redirect `res://x.tres` to th
 `x.tres.converted.res`; those would shadow the text file we just wrote, so a remap whose target
 we converted into its own base path is moved to `.autoconverted/`.
 
-Validated on Sonic Colors Ultimate: the 35 project settings are written, GDRE Tools parses the
-resulting `project.godot` (and re-saves it line-for-line identical), all 72 scripts of a
-multi-pack extraction decompile with revision 3.1.1, and 2 603 of the 2 605 stream textures of
-`sonic0.pck` convert to PNG in about 45 s (the two HDR ones included), with 188 name collisions
-kept as separate files. Decoded pages were checked visually against the game's UI and stage
-textures. Of the 3 773 binary resources of `sonic3.pck` (718 materials, 1 288 animations,
-45 meshes, 70 scenes and 1 652 `.converted.res` files), all convert in ~14 s with zero failures
-(1 179 of them are packed scenes); a random sample of the text output re-saves through the
-engine's own text loader. Relinking then rewrites 2 300 `res://` references across 548 files.
+Validated on Sonic Colors Ultimate, all six packs (11 GiB, ~80 000 files extracted):
+
+* all 72 scripts decompile with revision 3.1.1 (byte-identical to GDRE Tools);
+* 8 237 stream textures convert to PNG in ~5.5 min (desktop S3TC preferred, 78 truncated
+  mobile-only variants reported instead of guessed) and land at their original source paths;
+* 10 104 binary resources convert to `.tres`/`.tscn` in ~3 min with zero failures
+  (2 854 packed scenes, 4 name collisions), and imported scenes/meshes land at
+  `res://dir/name.tscn|tres`;
+* relinking rewrites 34 978 `res://` references in 6 161 files and archives 4 551 stale
+  `.remap` files;
+* the number of scene/resource references that point at a file that does not exist in the
+  recovered tree drops from 4 939 to 181 (1.5 % of 12 213 distinct references; the rest are
+  content the packs never ship, e.g. `stg300` materials or runtime-generated meshes).
+
+A random sample of the text output — scenes up to 1.2 MB, meshes and resources — re-saves
+through the engine's own text loader without errors.
 
 Still to come, in this order:
 
@@ -306,7 +317,10 @@ Sonic Colors Ultimate (`\\DPT0\d$\Acorn`, Godot 3.1.2 pack v1, 11 GiB in 6 packs
 * 3 773 binary resources of `sonic3.pck` (materials, animations, meshes, imported scenes and
   `.converted.res` files) convert to `.tres`/`.tscn` in ~14 s with zero failures; the output
   re-saves through the engine's text loader, and the packed scenes rebuild their full node
-  trees (skeletons, mesh instances, animation players) from the `_bundled` dictionary.
+  trees (skeletons, mesh instances, animation players) from the `_bundled` dictionary;
+* the full six-pack `restore` (every pack merged, ~80 000 files) writes 72 scripts, 8 237 PNGs,
+  10 104 text resources and 34 978 relinked references, and leaves 181 unresolvable references
+  out of 12 213 (content the packs never ship).
 
 ## Limitations
 
