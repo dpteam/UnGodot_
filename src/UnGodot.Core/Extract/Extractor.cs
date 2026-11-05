@@ -198,7 +198,7 @@ public static class Extractor
                         (content, decrypted) = Decode(source, pck, job.Entry, key);
                         if (options.VerifyMd5 && job.Entry.HasMd5)
                         {
-                            md5 = content;
+                            md5 = GodotCrypto.Md5(content);
                         }
 
                         WriteAtomic(job.Target, content);
@@ -216,7 +216,7 @@ public static class Extractor
                     }
 
                     if (options.VerifyMd5 && job.Entry.HasMd5 &&
-                        (written != job.Entry.Size || md5 is null || !GodotCrypto.Md5Equals(md5, job.Entry.Md5)))
+                        (written != job.Entry.Size || md5 is null || !GodotCrypto.DigestEquals(md5, job.Entry.Md5)))
                     {
                         lock (stats.ChecksumErrors)
                         {

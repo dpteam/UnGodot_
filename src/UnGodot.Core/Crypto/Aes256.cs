@@ -176,6 +176,10 @@ public static class GodotCrypto
         return CryptographicOperations.FixedTimeEquals(digest, expected);
     }
 
+    /// <summary>Compares an already computed MD5 digest with the expected one.</summary>
+    public static bool DigestEquals(ReadOnlySpan<byte> digest, ReadOnlySpan<byte> expected) =>
+        CryptographicOperations.FixedTimeEquals(digest, expected);
+
     /// <summary>AES-256-CFB decryption, as implemented by <c>CryptoCore::decrypt_cfb</c>.</summary>
     public static byte[] DecryptCfb(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv)
     {

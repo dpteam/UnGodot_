@@ -178,6 +178,60 @@ public class PackTests
     }
 
     [Fact]
+    public void PlainEntriesVerifyTheirStoredChecksum()
+    {
+        var files = new[] { new TestPacks.FileSpec("res://a.txt", "hello"u8.ToArray()) };
+        byte[] pack = TestPacks.BuildV4(files);
+        using var source = new MemorySource(pack);
+        Assert.True(PckLocator.TryLocate(source, out PckHeader? header, out _));
+        PckFile opened = PckFile.Open(source, header!);
+
+        string output = Path.Combine(Path.GetTempPath(), "ungodot-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            ExtractStats stats = Extractor.Extract(source, opened, output, null, new ExtractOptions());
+            Assert.Equal(1, stats.Written);
+            Assert.Empty(stats.ChecksumErrors);
+            Assert.Equal("hello", File.ReadAllText(Path.Combine(output, "a.txt")));
+        }
+        finally
+        {
+            if (Directory.Exists(output))
+            {
+                Directory.Delete(output, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ReportsAFileWhoseContentDoesNotMatchItsChecksum()
+    {
+        var files = new[] { new TestPacks.FileSpec("res://a.txt", "hello"u8.ToArray()) };
+        byte[] pack = TestPacks.BuildV4(files);
+        pack[112] ^= 0xFF; // the v4 header is 112 bytes; this is the first content byte
+
+        using var source = new MemorySource(pack);
+        Assert.True(PckLocator.TryLocate(source, out PckHeader? header, out _));
+        PckFile opened = PckFile.Open(source, header!);
+
+        string output = Path.Combine(Path.GetTempPath(), "ungodot-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            ExtractStats stats = Extractor.Extract(source, opened, output, null, new ExtractOptions());
+            Assert.Equal(1, stats.Written);
+            Assert.Single(stats.ChecksumErrors);
+            Assert.Equal("res://a.txt", stats.ChecksumErrors[0]);
+        }
+        finally
+        {
+            if (Directory.Exists(output))
+            {
+                Directory.Delete(output, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void SanitisesEntryPaths()
     {
         Assert.Equal("icon.svg", SafePath.Relative("res://icon.svg"));
