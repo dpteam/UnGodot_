@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -187,33 +188,49 @@ public static class Extractor
                         }
                     }
 
-                    (byte[] content, bool decrypted) = Decode(source, pck, job.Entry, key);
-                    Interlocked.Add(ref stats.BytesWritten, content.Length);
+                    long written;
+                    byte[]? md5 = null;
+                    bool decrypted = false;
+
+                    if (job.Entry.Encrypted)
+                    {
+                        byte[] content;
+                        (content, decrypted) = Decode(source, pck, job.Entry, key);
+                        if (options.VerifyMd5 && job.Entry.HasMd5)
+                        {
+                            md5 = content;
+                        }
+
+                        WriteAtomic(job.Target, content);
+                        written = content.Length;
+                    }
+                    else
+                    {
+                        (written, md5) = CopyPlainEntry(source, pck, job.Entry, job.Target, options.VerifyMd5);
+                    }
+
+                    Interlocked.Add(ref stats.BytesWritten, written);
                     if (decrypted)
                     {
                         Interlocked.Increment(ref stats.Decrypted);
                     }
 
-                    if (options.VerifyMd5 && job.Entry.HasMd5)
+                    if (options.VerifyMd5 && job.Entry.HasMd5 &&
+                        (written != job.Entry.Size || md5 is null || !GodotCrypto.Md5Equals(md5, job.Entry.Md5)))
                     {
-                        bool ok = content.Length == job.Entry.Size && GodotCrypto.Md5Equals(content, job.Entry.Md5);
-                        if (!ok)
+                        lock (stats.ChecksumErrors)
                         {
-                            lock (stats.ChecksumErrors)
-                            {
-                                stats.ChecksumErrors.Add(job.Entry.Path);
-                            }
+                            stats.ChecksumErrors.Add(job.Entry.Path);
                         }
                     }
 
-                    WriteAtomic(job.Target, content);
                     Interlocked.Increment(ref stats.Written);
 
                     if (manifest is not null)
                     {
                         lock (manifestGate)
                         {
-                            manifest.Add($"{GodotCrypto.ToHex(job.Entry.Md5)}  {job.Relative.Replace('\\', '/')}  {content.Length}");
+                            manifest.Add($"{GodotCrypto.ToHex(job.Entry.Md5)}  {job.Relative.Replace('\\', '/')}  {written}");
                         }
                     }
                 }
@@ -288,6 +305,11 @@ public static class Extractor
                 throw new PckException("the file is encrypted but no key is available");
             }
 
+            if (entry.Size > int.MaxValue)
+            {
+                throw new PckException($"the encrypted file is too large for the in-memory decoder ({entry.Size} bytes)");
+            }
+
             EncryptedBlob blob = EncryptedBlob.Read(source, start, out string? error)
                 ?? throw new PckException($"cannot parse the encrypted file: {error}");
             byte[] plain = blob.TryDecrypt(key)
@@ -319,6 +341,74 @@ public static class Extractor
         }
 
         File.Move(part, full, overwrite: true);
+    }
+
+    /// <summary>
+    /// Copies a plaintext entry with a fixed-size buffer, hashing on the way. Entries can be
+    /// far larger than memory (movies, big texture atlases), so they are never materialised.
+    /// </summary>
+    private static (long Written, byte[]? Md5) CopyPlainEntry(
+        IRandomAccessSource source,
+        PckFile pck,
+        PckEntry entry,
+        string target,
+        bool verify)
+    {
+        long start = pck.DataOffset(entry);
+        if (start < 0 || entry.Size > source.Length - start)
+        {
+            throw new PckException($"the file lies outside the container (offset {start}, size {entry.Size})");
+        }
+
+        string full = PathUtil.WithLongPathPrefix(target);
+        string part = full + ".part";
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(1 << 20);
+        using IncrementalHash? hash = verify ? IncrementalHash.CreateHash(HashAlgorithmName.MD5) : null;
+
+        try
+        {
+            using (var stream = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.SequentialScan))
+            {
+                long offset = start;
+                long remaining = entry.Size;
+                while (remaining > 0)
+                {
+                    int want = (int)Math.Min(buffer.Length, remaining);
+                    int read = source.ReadAt(offset, buffer.AsSpan(0, want));
+                    if (read <= 0)
+                    {
+                        throw new TruncatedSourceException(
+                            $"the file is truncated (wanted {entry.Size} bytes at {start}, got {entry.Size - remaining})");
+                    }
+
+                    stream.Write(buffer, 0, read);
+                    hash?.AppendData(buffer, 0, read);
+                    offset += read;
+                    remaining -= read;
+                }
+            }
+
+            File.Move(part, full, overwrite: true);
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(part);
+            }
+            catch
+            {
+                // the .part file is best effort cleanup
+            }
+
+            throw;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        return (entry.Size, hash?.GetHashAndReset());
     }
 
     /// <summary>Minimal glob matcher: <c>*</c>, <c>?</c>, <c>**</c>, case insensitive.</summary>
