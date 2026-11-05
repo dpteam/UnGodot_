@@ -12,6 +12,7 @@ using UnGodot.Core.Net;
 using UnGodot.Core.Pck;
 using UnGodot.Core.Plugins;
 using UnGodot.Core.Workspace;
+using UnGodot.GDScript;
 using PckFile = UnGodot.Core.Pck.Pck;
 
 namespace UnGodot.Cli;
@@ -27,6 +28,7 @@ internal static class Commands
             "key" => Key(options),
             "extract" => Extract(options, cancellationToken),
             "recover" => await RecoverAsync(options, cancellationToken).ConfigureAwait(false),
+            "decompile" => DecompileCommand.Run(options, cancellationToken),
             "plugins" => Plugins(options, cancellationToken),
             "editor" => await EditorAsync(options, cancellationToken).ConfigureAwait(false),
             "setup" => await SetupAsync(options, cancellationToken).ConfigureAwait(false),

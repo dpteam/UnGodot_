@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\UnGodot.Core\UnGodot.Core.csproj" />
+    <ProjectReference Include="..\..\src\UnGodot.Variants\UnGodot.Variants.csproj" />
+    <ProjectReference Include="..\..\src\UnGodot.GDScript\UnGodot.GDScript.csproj" />
   </ItemGroup>
 
 </Project>

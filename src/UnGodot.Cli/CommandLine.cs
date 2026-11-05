@@ -30,6 +30,9 @@ internal sealed class CliOptions
     public string? Filter { get; set; }
     public int? Jobs { get; set; }
     public string? GodotVersion { get; set; }
+    public string? EngineVersion { get; set; }
+    public bool Spaces { get; set; }
+    public int TabSize { get; set; } = 4;
     public bool? Mono { get; set; }
     public bool Templates { get; set; }
     public bool NoLaunch { get; set; }
@@ -53,6 +56,7 @@ internal static class CommandLine
           key      <path>     Recover the pack encryption key (prints it in hex)
           extract  <path>     Extract the contents (all packs found, merged)
           recover  <path>     Recover a full Godot project with GDRE Tools
+          decompile <path>    Decompile .gdc bytecode to GDScript source (native)
           plugins  <project>  Restore the native GDExtension libraries
           editor   [project]  Install and/or open the Godot editor the project needs
           setup               Download GDRE Tools
@@ -82,6 +86,9 @@ internal static class CommandLine
               --no-color        Disable ANSI colours
               --dry-run         recover: print the GDRE command without running it
               --no-plugins      recover: skip restoring GDExtension libraries
+              --engine <VERSION> decompile: engine version hint (e.g. 3.1.2)
+              --spaces          decompile with spaces instead of tabs
+              --tab-size <N>    decompile indentation width (default 4)
               --godot <VERSION> editor: version to use instead of the detected one
               --mono/--no-mono  editor: force the .NET build or the regular one
               --templates       editor: also install the export templates
@@ -102,7 +109,7 @@ internal static class CommandLine
 
         var commands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "detect", "scan", "info", "key", "extract", "recover", "plugins", "editor", "setup", "selftest", "help",
+            "detect", "scan", "info", "key", "extract", "recover", "decompile", "plugins", "editor", "setup", "selftest", "help",
         };
 
         for (int i = 0; i < args.Length; i++)
@@ -244,6 +251,23 @@ internal static class CommandLine
                         break;
                     case "--godot":
                         options.GodotVersion = Value();
+                        break;
+                    case "--engine":
+                        options.EngineVersion = Value();
+                        break;
+                    case "--spaces":
+                        options.Spaces = true;
+                        break;
+                    case "--tab-size":
+                        if (int.TryParse(Value(), out int tabSize) && tabSize > 0)
+                        {
+                            options.TabSize = tabSize;
+                        }
+                        else
+                        {
+                            error = "--tab-size needs a positive number";
+                        }
+
                         break;
                     case "--mono":
                         options.Mono = true;

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>UnGodot.GDScript</RootNamespace>
+    <AssemblyName>UnGodot.GDScript</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UnGodot.Variants\UnGodot.Variants.csproj" />
+    <ProjectReference Include="..\UnGodot.Core\UnGodot.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Opcode/function tables for every GDScript bytecode revision (data from GDRE Tools). -->
+    <EmbeddedResource Include="Data\bytecode_versions.json" LogicalName="UnGodot.GDScript.bytecode_versions.json" />
+    <EmbeddedResource Include="Data\function_arg_counts.json" LogicalName="UnGodot.GDScript.function_arg_counts.json" />
+  </ItemGroup>
+
+</Project>

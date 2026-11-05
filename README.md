@@ -33,7 +33,7 @@ packs found      6
 ```bash
 dotnet build -c Release
 dotnet run --project src/UnGodot.Cli -c Release -- --help
-dotnet test                       # 41 tests, synthetic packs for every format
+dotnet test                       # 49 tests: packs, crypto, key search, discovery, decompiler
 dotnet publish src/UnGodot.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
 ```
 
@@ -50,6 +50,7 @@ Commands:
   key      <path>     Recover the pack encryption key (prints it in hex)
   extract  <path>     Extract the contents (all packs found, merged)
   recover  <path>     Recover a full Godot project with GDRE Tools
+  decompile <path>    Decompile .gdc bytecode to GDScript source (native, no GDRE)
   plugins  <project>  Restore the native GDExtension libraries
   editor   [project]  Install and/or open the Godot editor the project needs
   setup               Download GDRE Tools
@@ -175,10 +176,46 @@ uses for DLC and patches. `recover` does this automatically before calling GDRE 
 | `src/UnGodot.Core/Gdre` | GDRE Tools lookup, download, output renderer |
 | `src/UnGodot.Core/Godot` | editor version detection and downloads |
 | `src/UnGodot.Core/Plugins` | GDExtension native library restoration (FMOD/Spine/Sentry) |
+| `src/UnGodot.Variants` | Godot binary variants (gdc constants, project.binary, .res) and text writer |
+| `src/UnGodot.GDScript` | GDScript bytecode container, revision detection, decompiler |
 | `src/UnGodot.Cli` | the `ungodot` command line |
-| `tests/UnGodot.Tests` | 41 tests: crypto vectors, synthetic packs v0–v4, encrypted packs, key search, discovery, ZIP |
+| `tests/UnGodot.Tests` | 49 tests: crypto vectors, synthetic packs v0-v4, encrypted packs, key search, discovery, ZIP, decompiler |
 
-`refs/` holds the upstream Rust source this port was written from; it is ignored by git.
+`refs/` holds the upstream sources this port was written from (`gore` in Rust, `gdsdecomp` in
+C++); it is ignored by git. See `THIRD_PARTY_NOTICES.md`.
+
+## Native decompilation (no GDRE)
+
+`ungodot decompile` turns Godot 3 compiled scripts back into source. This is a full port of
+GDRE's bytecode decompiler, not a wrapper: the `GDSC` container, the XOR-obfuscated
+identifier table, the packed token stream (1 or 4 bytes per token), binary variants for the
+constant pool, and the token pretty-printer that rebuilds line structure and indentation.
+
+```bash
+# One script, next to it (script.gd)
+ungodot decompile game/scripts/player.gdc
+
+# A whole tree, keeping the folder layout
+ungodot decompile extracted/ -o extracted_decompiled
+
+# Hint the engine version (major.minor is enough)
+ungodot decompile extracted/ --engine 3.1 -o out
+```
+
+The revision is detected from the bytecode alone: every revision that shares the bytecode
+version is validated against the stream, including the number of arguments at every built-in
+call site — that is what separates 3.1.0 from 3.1.1, or 3.2 from 3.5. The opcode and function
+tables for all known revisions ship inside the assembly (from GDRE Tools, MIT).
+
+Status:
+
+* GDScript 1.0 (Godot 2.x, 3.x): **supported**, output is byte-identical to GDRE Tools.
+* GDScript 2.0 (Godot 4.x, `GDSC` v100+): recognised, but the payload is Zstandard-compressed
+  and is not implemented yet.
+* Encrypted scripts (`.gde`): recognised and reported, decryption is on the roadmap.
+
+Validation on Sonic Colors Ultimate (Godot 3.1.2, revision `514a3fb`): all 38 shipped `.gdc`
+files decompile to files **byte-identical** to GDRE Tools 2.7.4, with no engine hint passed.
 
 ## Verified on real data
 
