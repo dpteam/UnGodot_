@@ -86,21 +86,6 @@ public sealed class ResourceStage : IRecoveryStage
                         notes.Add($"{relative}: text name taken by {Path.GetRelativePath(context.Root, owner)}");
                     }
                 }
-                else if (File.Exists(target))
-                {
-                    // Never overwrite an unrelated text file that came with the game (or a
-                    // previous run): reuse the name when the content is already ours.
-                    string existing = File.ReadAllText(target);
-                    if (!string.Equals(existing, text.Text, StringComparison.Ordinal))
-                    {
-                        target = Disambiguate(target, file, claimed);
-                        collisions++;
-                        if (notes.Count < MaxNotes)
-                        {
-                            notes.Add($"{relative}: {Path.GetFileName(target)} already exists, kept both");
-                        }
-                    }
-                }
 
                 claimed[target] = file;
                 File.WriteAllText(target, text.Text);

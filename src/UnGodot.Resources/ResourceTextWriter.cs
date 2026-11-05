@@ -323,11 +323,7 @@ public static class ResourceTextWriter
 
             if (i == 0)
             {
-                if (node.Instance >= 0)
-                {
-                    body.Append(" instance=").Append(InstanceReference(node.Instance, variants, resolver));
-                }
-                else
+                if (node.Instance < 0)
                 {
                     body.Append(" type=\"").Append(NodeTypeAt(names, node.Type)).Append('"');
                 }
@@ -335,11 +331,7 @@ public static class ResourceTextWriter
             else
             {
                 body.Append(" parent=\"").Append(Escape(ParentPath(paths, nodePaths, node.Parent))).Append('"');
-                if (node.Instance >= 0)
-                {
-                    body.Append(" instance=").Append(InstanceReference(node.Instance, variants, resolver));
-                }
-                else if (node.Type != TypeInstanced)
+                if (node.Instance < 0 && node.Type != TypeInstanced)
                 {
                     body.Append(" type=\"").Append(NodeTypeAt(names, node.Type)).Append('"');
                 }
@@ -350,11 +342,10 @@ public static class ResourceTextWriter
                 }
             }
 
-            body.Append("]\n");
-
+            // Groups are part of the section header, on the same line as the node.
             if (node.Groups.Count > 0)
             {
-                body.Append("groups=[ ");
+                body.Append(" groups=[");
                 for (int g = 0; g < node.Groups.Count; g++)
                 {
                     if (g > 0)
@@ -365,8 +356,17 @@ public static class ResourceTextWriter
                     body.Append('"').Append(Escape(NameAt(names, node.Groups[g]))).Append('"');
                 }
 
-                body.Append(" ]\n");
+                body.Append(']');
             }
+
+            if (node.Instance >= 0)
+            {
+                bool placeholder = (node.Instance & FlagInstanceIsPlaceholder) != 0;
+                body.Append(placeholder ? " instance_placeholder=" : " instance=")
+                    .Append(InstanceReference(node.Instance, variants, resolver));
+            }
+
+            body.Append("]\n");
 
             foreach ((int propertyName, int propertyValue) in node.Properties)
             {
@@ -469,7 +469,8 @@ public static class ResourceTextWriter
             return "null";
         }
 
-        return resolver(variants[index]) ?? "null";
+        Variant value = variants[index];
+        return resolver(value) ?? VariantTextWriter.Write(value, 3, GodotTextStyle.Script, resolver);
     }
 
     private static string NameAt(List<string> names, int index)

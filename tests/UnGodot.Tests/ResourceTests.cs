@@ -330,6 +330,41 @@ public class ResourceTests
         }
     }
 
+    [Fact]
+    public void WritesNodeGroupsInTheNodeHeader()
+    {
+        byte[] bundled = VDictionary(
+            ("names", VStringArray("Root", "Node2D", "Enemies", "Pickups")),
+            ("variants", VArray()),
+            ("nodes", VIntArray(
+                -1, -1, 1, 0, -1, 0, 2, 2, 3)), // two groups at the end of the node
+            ("conns", VIntArray()));
+
+        ResourceTextResult text = ResourceTextWriter.Write(BinaryResource.Load(
+            BuildResource("PackedScene", [], [new TestObject("PackedScene", "local://0", [("_bundled", bundled)])])));
+
+        Assert.Contains("[node name=\"Root\" type=\"Node2D\" groups=[\"Enemies\", \"Pickups\"]]", text.Text);
+    }
+
+    [Fact]
+    public void WritesInstancePlaceholders()
+    {
+        byte[] bundled = VDictionary(
+            ("names", VStringArray("Root", "Node2D", "Child")),
+            ("variants", VArray(VString("res://sub/thing.tscn"))),
+            ("nodes", VIntArray(
+                -1, -1, 1, 0, -1, 0, 0,
+                0, 0, 0x7FFFFFFF, 2, (1 << 30) | 0, 0, 0)),
+            ("conns", VIntArray()));
+
+        ResourceTextResult text = ResourceTextWriter.Write(BinaryResource.Load(
+            BuildResource("PackedScene", [], [new TestObject("PackedScene", "local://0", [("_bundled", bundled)])])));
+
+        Assert.True(
+            text.Text.Contains("[node name=\"Child\" parent=\".\" instance_placeholder=\"res://sub/thing.tscn\"]", StringComparison.Ordinal),
+            text.Text);
+    }
+
     private static byte[] MinimalScene()
     {
         byte[] bundled = VDictionary(
